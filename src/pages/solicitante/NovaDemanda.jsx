@@ -644,7 +644,7 @@ export default function NovaDemanda() {
                       { key: 'rodoviario', label: 'Rodoviário', icon: Bus },
                       { key: 'hospedagem', label: 'Hospedagem', icon: Hotel }].map(s => (
                       <button key={s.key} type="button"
-                        onClick={() => setPacoteTipos(p => ({ ...p, [s.key]: !p[s.key] }))}
+                        onPointerDown={e => { e.preventDefault(); setPacoteTipos(p => ({ ...p, [s.key]: !p[s.key] })) }}
                         className="flex items-center gap-2 p-3 rounded-xl border-2 text-sm font-medium transition-all"
                         style={{
                           borderColor: pacoteTipos[s.key] ? '#C0186A' : '#E5E7EB',
