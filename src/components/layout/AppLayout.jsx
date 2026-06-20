@@ -49,7 +49,7 @@ export default function AppLayout() {
             </div>
             <div>
               <p className="text-white text-sm font-semibold leading-none">U Business</p>
-              <p className="text-sm leading-none mt-0.5" style={{ color: '#F9C0D8' }}>Travel</p>
+              <p className="text-xs leading-none mt-0.5" style={{ color: '#F9C0D8' }}>Agência de Viagens</p>
             </div>
           </div>
         </div>

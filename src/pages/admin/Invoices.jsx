@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { fmtTs, fmtData } from '../../lib/datetime'
-import { Loader2, Plus, FileText, ChevronRight, X, Check, Filter } from 'lucide-react'
+import { Loader2, Plus, FileText, ChevronRight, X, Check, Filter, Download } from 'lucide-react'
 
 function moeda(v) {
   if (!v && v !== 0) return '—'
@@ -35,37 +35,47 @@ function NovaInvoiceModal({ empresas, onSalvar, onFechar }) {
     if (!form.empresa_id || !form.periodo_inicio || !form.periodo_fim) return
     setLoading(true)
 
-    // 1. Busca demandas da empresa
-    const { data: demandas } = await supabase
+    // Step 1: demandas da empresa
+    const { data: demList } = await supabase
       .from('demandas')
-      .select('id')
+      .select('id, tipo, origem, destino, cidade, obra_id, passageiros(nome, sobrenome), obras(nome)')
       .eq('empresa_id', form.empresa_id)
 
-    const demandaIds = (demandas ?? []).map(d => d.id)
-    if (demandaIds.length === 0) { setBilhetes([]); setSelecionados([]); setLoading(false); return }
+    if (!demList || demList.length === 0) { setBilhetes([]); setSelecionados([]); setLoading(false); return }
+    const demIds = demList.map(d => d.id)
+    const demMap = Object.fromEntries(demList.map(d => [d.id, d]))
 
-    // 2. Busca bilhetes dessas demandas no período
-    const { data } = await supabase
+    // Step 2: bilhetes no período
+    const { data: bils } = await supabase
       .from('bilhetes')
-      .select(`
-        id, emitido_em, voucher_url, demanda_id,
-        demandas(
-          id, tipo, origem, destino, cidade, data_ida, checkin,
-          empresa_id, obra_id,
-          passageiros(nome, sobrenome),
-          obras(nome),
-          opcoes(preco_venda, preco_milha, tipo_emissao)
-        ),
-        aprovacoes(comentario)
-      `)
-      .in('demanda_id', demandaIds)
-      .gte('emitido_em', form.periodo_inicio + 'T00:00:00')
-      .lte('emitido_em', form.periodo_fim + 'T23:59:59')
+      .select('id, emitido_em, voucher_url, demanda_id')
+      .in('demanda_id', demIds)
+      .gte('emitido_em', form.periodo_inicio + 'T00:00:00-03:00')
+      .lte('emitido_em', form.periodo_fim + 'T23:59:59-03:00')
 
-    setBilhetes(data ?? [])
-    setSelecionados((data ?? []).map(b => b.id))
+    if (!bils || bils.length === 0) { setBilhetes([]); setSelecionados([]); setLoading(false); return }
+
+    // Step 3: aprovacoes
+    const { data: aprs } = await supabase
+      .from('aprovacoes')
+      .select('demanda_id, comentario, opcoes(preco_venda, preco_milha)')
+      .in('demanda_id', demIds)
+      .eq('decisao', 'aprovado')
+
+    const aprMap = Object.fromEntries((aprs ?? []).map(a => [a.demanda_id, a]))
+
+    // Merge
+    const merged = bils.map(b => ({
+      ...b,
+      demandas: demMap[b.demanda_id],
+      aprovacao: aprMap[b.demanda_id],
+    }))
+
+    setBilhetes(merged)
+    setSelecionados(merged.map(b => b.id))
     setLoading(false)
   }
+
 
   async function carregarObras() {
     if (!form.empresa_id) return
@@ -82,10 +92,10 @@ function NovaInvoiceModal({ empresas, onSalvar, onFechar }) {
   }
 
   function getValor(b) {
-    const tipoEmissao = b.aprovacoes?.[0]?.comentario
-    const op = b.demandas?.opcoes?.[0]
+    const tipo = b.aprovacao?.comentario
+    const op = b.aprovacao?.opcoes
     if (!op) return 0
-    return tipoEmissao === 'milha' ? (op.preco_milha || 0) : (op.preco_venda || 0)
+    return tipo === 'milha' ? (op.preco_milha || 0) : (op.preco_venda || 0)
   }
 
   function getDescricao(b) {
@@ -257,6 +267,134 @@ function InvoiceDetalhe({ invoice, onVoltar, onAtualizar }) {
     onAtualizar({ ...invoice, status })
   }
 
+  function gerarPDF() {
+    const empresa = invoice.empresas?.nome ?? '—'
+    const cnpj = invoice.empresas?.cnpj ?? ''
+    const numero = invoice.id.slice(0, 8).toUpperCase()
+    const periodo = `${fmtData(invoice.periodo_inicio)} a ${fmtData(invoice.periodo_fim)}`
+    const emitida_em = new Date().toLocaleDateString('pt-BR')
+
+    function moedaFmt(v) {
+      return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    }
+
+    const itensHtml = itens.map((item, i) => {
+      const bg = i % 2 === 0 ? '#FAFAFA' : '#FFFFFF'
+      const b = item.bilhetes ?? {}
+      const d = b.demandas ?? {}
+      const pax = d.passageiros ? `${d.passageiros.nome} ${d.passageiros.sobrenome ?? ''}` : '—'
+      const tipo = d.tipo === 'aereo' ? 'Aéreo' : d.tipo === 'hospedagem' ? 'Hospedagem' : d.tipo === 'rodoviario' ? 'Rodoviário' : (d.tipo ?? '—')
+      const rota = d.tipo === 'hospedagem' ? (d.cidade ?? '—') : `${d.origem ?? '—'} → ${d.destino ?? '—'}`
+      const dataIda = d.tipo === 'hospedagem' ? (d.checkin ?? '—') : (d.data_ida ?? '—')
+      const dataVolta = d.tipo === 'hospedagem' ? (d.checkout ?? '') : (d.data_volta ?? '')
+      const datas = dataVolta ? `${dataIda}<br><span style="color:#9CA3AF;font-size:7.5pt">→ ${dataVolta}</span>` : dataIda
+      const emitidoEm = b.emitido_em ? new Date(b.emitido_em).toLocaleDateString('pt-BR') : '—'
+      return `<tr style="background:${bg}">
+        <td class="td">${pax}</td>
+        <td class="td"><span style="font-weight:600;color:#5B2D8E">${tipo}</span> · <span style="color:#6B7280">${rota}</span></td>
+        <td class="td center">${datas}</td>
+        <td class="td center">${emitidoEm}</td>
+        <td class="td right valor">${moedaFmt(item.valor)}</td>
+      </tr>`
+    }).join('')
+
+    const total = itens.reduce((s, i) => s + (i.valor || 0), 0)
+
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+    <style>
+      @page { size: A4; margin: 28px 36px; }
+      * { margin:0; padding:0; box-sizing:border-box; }
+      body { font-family: Arial, sans-serif; color:#1A1614; font-size:9pt; }
+      .header { display:flex; align-items:center; justify-content:space-between; border:1.5px solid #D1D5DB; border-radius:6px; padding:12px 16px; margin-bottom:16px; }
+      .brand { display:flex; align-items:center; gap:12px; }
+      .logo { width:56px; height:56px; }
+      .brand-name { font-size:10pt; font-weight:700; color:#1A1614; }
+      .brand-details { font-size:8pt; color:#4B5563; margin-top:4px; line-height:1.6; }
+      .brand-details em { font-style:italic; }
+      .invoice-badge { text-align:right; }
+      .invoice-title { font-size:16pt; font-weight:700; color:#1A1614; }
+      .invoice-num-label { font-size:7pt; color:#9CA3AF; text-transform:uppercase; letter-spacing:1px; margin-bottom:1px; }
+      .client-block { margin-bottom:10px; }
+      .client-label { font-size:7pt; color:#9CA3AF; text-transform:uppercase; letter-spacing:0.8px; margin-bottom:2px; }
+      .client-name { font-size:10pt; font-weight:600; }
+      .client-cnpj { font-size:8pt; color:#6B7280; }
+      .info-row { display:flex; gap:24px; margin-bottom:14px; }
+      .info-label { font-size:7pt; color:#9CA3AF; text-transform:uppercase; letter-spacing:0.8px; margin-bottom:1px; }
+      .info-value { font-size:9pt; font-weight:600; }
+      .divider { height:2px; background:linear-gradient(135deg,#5B2D8E,#C0186A); border-radius:2px; margin-bottom:14px; }
+      .section-title { font-size:8pt; font-weight:700; color:#5B2D8E; text-transform:uppercase; letter-spacing:0.8px; margin-bottom:6px; }
+      table { width:100%; border-collapse:collapse; }
+      .th { background:linear-gradient(135deg,#5B2D8E,#C0186A); color:#fff; font-size:7pt; font-weight:600; padding:7px 8px; text-transform:uppercase; }
+      .th.center { text-align:center; } .th.right { text-align:right; }
+      .td { padding:7px 8px; font-size:8.5pt; color:#374151; border-bottom:1px solid #F3F4F6; vertical-align:middle; }
+      .td.center { text-align:center; } .td.right { text-align:right; }
+      .td.valor { font-weight:700; color:#1A1614; white-space:nowrap; }
+      .bottom { margin-top:14px; display:flex; justify-content:space-between; align-items:flex-start; gap:16px; }
+      .pag-block { flex:1; background:#F8F9FA; border-radius:6px; padding:10px 12px; border-left:3px solid #5B2D8E; }
+      .pag-title { font-size:7.5pt; font-weight:700; color:#5B2D8E; text-transform:uppercase; letter-spacing:0.8px; margin-bottom:4px; }
+      .pag-text { font-size:8.5pt; color:#374151; line-height:1.7; }
+      .total-box { background:linear-gradient(135deg,#5B2D8E,#C0186A); border-radius:8px; padding:12px 20px; text-align:right; min-width:200px; }
+      .total-label { font-size:7pt; color:rgba(255,255,255,0.75); text-transform:uppercase; letter-spacing:1px; }
+      .total-value { font-size:16pt; font-weight:700; color:#fff; margin-top:2px; }
+      .footer { margin-top:14px; padding-top:10px; border-top:1px solid #E5E7EB; display:flex; justify-content:space-between; }
+      .footer-text { font-size:7.5pt; color:#9CA3AF; }
+      .footer-cnpj { font-weight:600; color:#6B7280; }
+    </style></head><body>
+    <div class="header">
+      <div class="brand">
+        <div>
+          <div class="brand-name">U BUSINESS AGÊNCIA DE VIAGENS LTDA.</div>
+          <div class="brand-details"><em>CNPJ: 44.058.861/0001-04</em><br>(11) 99963-4001<br>e-mail: ubusinessbr@gmail.com<br>São Paulo/SP – Brasil</div>
+        </div>
+      </div>
+      <div class="invoice-badge">
+        <div class="invoice-num-label">Invoice</div>
+        <div class="invoice-title">No: ${numero}</div>
+      </div>
+    </div>
+    <div class="client-block">
+      <div class="client-label">Comprador</div>
+      <div class="client-name">${empresa}</div>
+      ${cnpj ? `<div class="client-cnpj">CNPJ: ${cnpj}</div>` : ''}
+    </div>
+    <div class="info-row">
+      <div><div class="info-label">Período de referência</div><div class="info-value">${periodo}</div></div>
+      <div><div class="info-label">Data de emissão</div><div class="info-value">${emitida_em}</div></div>
+    </div>
+    <div class="divider"></div>
+    <div class="section-title">Detalhamento dos serviços</div>
+    <table>
+      <thead><tr>
+        <th class="th" style="width:20%">Passageiro</th>
+        <th class="th" style="width:34%">Serviço / Rota</th>
+        <th class="th center" style="width:16%">Ida / Volta</th>
+        <th class="th center" style="width:13%">Emissão</th>
+        <th class="th right" style="width:17%">Valor</th>
+      </tr></thead>
+      <tbody>${itensHtml}</tbody>
+    </table>
+    <div class="bottom">
+      <div class="pag-block">
+        <div class="pag-title">Dados para Pagamento</div>
+        <div class="pag-text">Banco Itaú &nbsp;|&nbsp; Ag: 8422 &nbsp;|&nbsp; CC: 99565-7<br>U Business Agência de Viagens LTDA &nbsp;|&nbsp; CNPJ: 44.058.861/0001-04 <em>(Pix)</em></div>
+      </div>
+      <div class="total-box">
+        <div class="total-label">Valor total</div>
+        <div class="total-value">${moedaFmt(total)}</div>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="footer-text"><span class="footer-cnpj">U Business Agência de Viagens LTDA</span> · CNPJ 44.058.861/0001-04</div>
+      <div class="footer-text">São Paulo, ${emitida_em}</div>
+    </div>
+    </body></html>`
+
+    const win = window.open('', '_blank')
+    win.document.write(html)
+    win.document.close()
+    win.onload = () => win.print()
+  }
+
   const total = itens.reduce((s, i) => s + (i.valor || 0), 0)
 
   return (
@@ -309,7 +447,10 @@ function InvoiceDetalhe({ invoice, onVoltar, onAtualizar }) {
       </div>
 
       {/* Ações de status */}
-      <div className="flex gap-3">
+      <div className="flex gap-3 flex-wrap">
+        <button onClick={gerarPDF} className="btn-secondary">
+          <Download size={15} /> Gerar PDF
+        </button>
         {invoice.status === 'rascunho' && (
           <button onClick={() => mudarStatus('enviado')} className="btn-primary">
             <FileText size={15} /> Marcar como enviado
