@@ -34,23 +34,34 @@ function NovaInvoiceModal({ empresas, onSalvar, onFechar }) {
   async function buscarBilhetes() {
     if (!form.empresa_id || !form.periodo_inicio || !form.periodo_fim) return
     setLoading(true)
-    // Busca bilhetes emitidos no período para a empresa
+
+    // 1. Busca demandas da empresa
+    const { data: demandas } = await supabase
+      .from('demandas')
+      .select('id')
+      .eq('empresa_id', form.empresa_id)
+
+    const demandaIds = (demandas ?? []).map(d => d.id)
+    if (demandaIds.length === 0) { setBilhetes([]); setSelecionados([]); setLoading(false); return }
+
+    // 2. Busca bilhetes dessas demandas no período
     const { data } = await supabase
       .from('bilhetes')
       .select(`
-        id, emitido_em, voucher_url,
-        demandas!inner(
+        id, emitido_em, voucher_url, demanda_id,
+        demandas(
           id, tipo, origem, destino, cidade, data_ida, checkin,
           empresa_id, obra_id,
           passageiros(nome, sobrenome),
           obras(nome),
-          opcoes!inner(preco_venda, preco_milha, tipo_emissao)
+          opcoes(preco_venda, preco_milha, tipo_emissao)
         ),
         aprovacoes(comentario)
       `)
-      .eq('demandas.empresa_id', form.empresa_id)
+      .in('demanda_id', demandaIds)
       .gte('emitido_em', form.periodo_inicio + 'T00:00:00')
       .lte('emitido_em', form.periodo_fim + 'T23:59:59')
+
     setBilhetes(data ?? [])
     setSelecionados((data ?? []).map(b => b.id))
     setLoading(false)
