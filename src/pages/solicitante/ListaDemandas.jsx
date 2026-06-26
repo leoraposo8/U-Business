@@ -73,6 +73,7 @@ export default function ListaDemandas() {
         passageiros(nome, sobrenome),
         demanda_passageiros(passageiros(nome, sobrenome)),
         obras(nome),
+        empresas(nome),
         perfis!solicitante_id(nome)
       `).order('created_at', { ascending: false })
       if (filtroStatus) q = q.eq('status', filtroStatus)
@@ -164,6 +165,7 @@ export default function ListaDemandas() {
                 <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#6B7280' }}>Pacote</th>
                 <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#6B7280' }}>Solicitado em</th>
                 <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#6B7280' }}>Último status</th>
+                {isAgencia && <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#6B7280' }}>Empresa</th>}
                 {isAgencia && <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#6B7280' }}>Solicitante</th>}
                 <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#6B7280' }}>Status</th>
                 <th className="px-5 py-3" />
@@ -211,6 +213,7 @@ export default function ListaDemandas() {
                   <td className="px-5 py-4 text-sm" style={{ color: d._ultimo_status ? '#6B7280' : '#D1D5DB' }}>
                     {d._ultimo_status ? fmtTs(d._ultimo_status) : '—'}
                   </td>
+                  {isAgencia && <td className="px-5 py-4 text-sm font-medium" style={{ color: '#1A1614' }}>{d.empresas?.nome ?? '—'}</td>}
                   {isAgencia && <td className="px-5 py-4 text-sm" style={{ color: '#6B7280' }}>{d.perfis?.nome ?? '—'}</td>}
                   <td className="px-5 py-4"><StatusBadge status={d.status} /></td>
                   <td className="px-5 py-4"><ChevronRight size={16} style={{ color: '#D1D5DB' }} /></td>

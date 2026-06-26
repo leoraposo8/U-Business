@@ -61,7 +61,7 @@ function NovoPassageiroModal({ onSalvar, onFechar }) {
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-semibold" style={{ color: '#1A1614' }}>Novo passageiro</h2>
-          <button onClick={onFechar}><X size={20} className="text-gray-400" /></button>
+          <button type="button" onClick={onFechar}><X size={20} className="text-gray-400" /></button>
         </div>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
@@ -78,8 +78,8 @@ function NovoPassageiroModal({ onSalvar, onFechar }) {
             <input className="input" placeholder="+55 (11) 99999-9999" value={form.contato} onChange={e => set('contato', e.target.value)} /></div>
         </div>
         <div className="flex gap-3 mt-5">
-          <button onClick={onFechar} className="btn-secondary flex-1">Cancelar</button>
-          <button onClick={() => valido && onSalvar(form)}
+          <button type="button" onClick={onFechar} className="btn-secondary flex-1">Cancelar</button>
+          <button type="button" onClick={() => valido && onSalvar(form)}
             disabled={!valido} className="btn-primary flex-1 justify-center">Adicionar</button>
         </div>
       </div>
@@ -127,7 +127,7 @@ function SeletorPassageiros({ passageiros, selecionados, onChange, qtd, perfil }
             <span key={p.id} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium"
               style={{ background: '#fdf2f8', border: '1px solid #f9c0d8', color: '#C0186A' }}>
               {p.nome} {p.sobrenome}
-              <button onClick={() => toggle(p)}><X size={13} /></button>
+              <button type="button" onClick={() => toggle(p)}><X size={13} /></button>
             </span>
           ))}
         </div>
@@ -407,6 +407,7 @@ export default function NovaDemanda() {
 
   async function handleSubmit(e) {
     e.preventDefault()
+    if (!canSubmit) { alert('Preencha os campos obrigatórios antes de enviar.'); return }
     setSalvando(true)
     try {
       const empresaFinal = perfil.empresa_id || empresaIdSel
