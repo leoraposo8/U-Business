@@ -16,7 +16,7 @@ const OPCAO_VAZIA = () => ({
   volta_chegada_data: '', volta_chegada_hora: '',
   preco_venda: '', preco_milha: '',
   reembolso: '', remarcacao: '',
-  imagem_file: null, imagem_preview: null,
+  imagem_file: null, imagem_preview: null, imagem_print_url: null,
 })
 
 
@@ -131,6 +131,7 @@ export default function FilaOpcoes() {
   const [demandaAtiva, setDemandaAtiva] = useState(null)
   const [opcoes, setOpcoes]     = useState([OPCAO_VAZIA()])
   const [enviando, setEnviando] = useState(false)
+  const [carregandoOpcoes, setCarregandoOpcoes] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -144,8 +145,10 @@ export default function FilaOpcoes() {
           solicitante:perfis!solicitante_id(nome),
           empresas(nome)
         `)
-        .eq('status', 'aguardando_opcoes')
+        .in('status', ['aguardando_opcoes', 'aguardando_aprovacao'])
         .order('data_ida', { ascending: true, nullsFirst: false })
+
+      // Existing options reload happens lazily on selection (only for already-submitted demandas)
 
       // Sort: viagem by data_ida, hospedagem by checkin, nulls last
       const sorted = (data ?? []).sort((a, b) => {
@@ -173,48 +176,115 @@ export default function FilaOpcoes() {
     setOpcao(idx, 'imagem_file', file)
   }
 
+  // Converte uma linha do banco (tabela opcoes) de volta para o formato do formulário
+  function dbToForm(row) {
+    const split = (ts) => {
+      if (!ts) return ['', '']
+      const [d, t] = ts.split(' ')
+      return [d || '', (t || '').slice(0, 5)]
+    }
+    const [saida_data, saida_hora]               = split(row.horario_ida)
+    const [chegada_data, chegada_hora]           = split(row.horario_volta)
+    const [volta_saida_data, volta_saida_hora]   = split(row.horario_volta_saida)
+    const [volta_chegada_data, volta_chegada_hora] = split(row.horario_volta_chegada)
+    return {
+      descricao: row.descricao ?? '', companhia: row.companhia ?? '',
+      saida_data, saida_hora,
+      chegada_data, chegada_hora,
+      volta_saida_data, volta_saida_hora,
+      volta_chegada_data, volta_chegada_hora,
+      preco_venda: row.preco_venda != null ? String(row.preco_venda) : '',
+      preco_milha: row.preco_milha != null ? String(row.preco_milha) : '',
+      reembolso: row.reembolso ?? '', remarcacao: row.remarcacao ?? '',
+      imagem_file: null,
+      imagem_preview: row.imagem_print_url ?? null,
+      imagem_print_url: row.imagem_print_url ?? null,
+    }
+  }
+
+  // Seleciona a demanda; se já estiver enviada, carrega as opções existentes para edição
+  async function selecionarDemanda(d) {
+    setDemandaAtiva(d)
+    if (d.status === 'aguardando_aprovacao') {
+      setCarregandoOpcoes(true)
+      const { data } = await supabase
+        .from('opcoes')
+        .select('id, descricao, companhia, horario_ida, horario_volta, horario_volta_saida, horario_volta_chegada, preco_venda, preco_milha, reembolso, remarcacao, imagem_print_url')
+        .eq('demanda_id', d.id)
+        .order('id', { ascending: true })
+      const mapeadas = (data ?? []).map(dbToForm)
+      setOpcoes(mapeadas.length ? mapeadas : [OPCAO_VAZIA()])
+      setCarregandoOpcoes(false)
+    } else {
+      setOpcoes([OPCAO_VAZIA()])
+    }
+  }
+
+  // Monta o payload das opções (faz upload de prints novos, preserva os já existentes)
+  async function montarPayload(lista) {
+    return Promise.all(lista.map(async op => {
+      let imagem_print_url = op.imagem_print_url || null
+      if (op.imagem_file) {
+        const ext = op.imagem_file.name.split('.').pop()
+        const path = `opcoes/${demandaAtiva.id}/${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`
+        const { error } = await supabase.storage.from('prints').upload(path, op.imagem_file)
+        if (!error) {
+          const { data: { publicUrl } } = supabase.storage.from('prints').getPublicUrl(path)
+          imagem_print_url = publicUrl
+        }
+      }
+      return {
+        demanda_id: demandaAtiva.id,
+        descricao: op.descricao || null,
+        companhia: op.companhia || null,
+        horario_ida: op.saida_data ? `${op.saida_data} ${op.saida_hora || '00:00'}` : null,
+        horario_volta: op.chegada_data ? `${op.chegada_data} ${op.chegada_hora || '00:00'}` : null,
+        horario_volta_saida: op.volta_saida_data ? `${op.volta_saida_data} ${op.volta_saida_hora || '00:00'}` : null,
+        horario_volta_chegada: op.volta_chegada_data ? `${op.volta_chegada_data} ${op.volta_chegada_hora || '00:00'}` : null,
+        preco_venda: op.preco_venda ? parseFloat(op.preco_venda.toString().replace(',', '.')) : null,
+        preco_milha: op.preco_milha ? parseFloat(op.preco_milha.toString().replace(',', '.')) : null,
+        reembolso: op.reembolso || null,
+        remarcacao: op.remarcacao || null,
+        imagem_print_url,
+      }
+    }))
+  }
+
   async function enviarOpcoes() {
     if (!demandaAtiva) return
-    const validas = opcoes.filter(o => o.companhia)
-    if (validas.length === 0) { alert('Adicione ao menos uma opção com companhia.'); return }
+    const isPosvenda = demandaAtiva.tipo === 'posvenda'
+    const validas = opcoes.filter(o => isPosvenda ? (o.preco_venda || o.descricao) : o.companhia)
+    if (validas.length === 0) {
+      alert(isPosvenda
+        ? 'Preencha ao menos uma opção (valor ou descrição).'
+        : 'Adicione ao menos uma opção com companhia.')
+      return
+    }
     setEnviando(true)
+    const editando = demandaAtiva.status === 'aguardando_aprovacao'
     try {
-      const inserir = await Promise.all(validas.map(async op => {
-        let imagem_print_url = null
-        if (op.imagem_file) {
-          const ext = op.imagem_file.name.split('.').pop()
-          const path = `opcoes/${demandaAtiva.id}/${Date.now()}.${ext}`
-          const { error } = await supabase.storage.from('prints').upload(path, op.imagem_file)
-          if (!error) {
-            const { data: { publicUrl } } = supabase.storage.from('prints').getPublicUrl(path)
-            imagem_print_url = publicUrl
-          }
-        }
-        return {
-          demanda_id: demandaAtiva.id,
-          descricao: op.descricao || null,
-          companhia: op.companhia,
-          horario_ida: op.saida_data ? `${op.saida_data} ${op.saida_hora || '00:00'}` : null,
-          horario_volta: op.chegada_data ? `${op.chegada_data} ${op.chegada_hora || '00:00'}` : null,
-          horario_volta_saida: op.volta_saida_data ? `${op.volta_saida_data} ${op.volta_saida_hora || '00:00'}` : null,
-          horario_volta_chegada: op.volta_chegada_data ? `${op.volta_chegada_data} ${op.volta_chegada_hora || '00:00'}` : null,
-          preco_venda: op.preco_venda ? parseFloat(op.preco_venda.toString().replace(',', '.')) : null,
-          preco_milha: op.preco_milha ? parseFloat(op.preco_milha.toString().replace(',', '.')) : null,
-          reembolso: op.reembolso || null,
-          remarcacao: op.remarcacao || null,
-          imagem_print_url,
-        }
-      }))
+      const inserir = await montarPayload(validas)
 
-      await supabase.from('opcoes').insert(inserir)
-      await supabase.from('demandas').update({ status: 'aguardando_aprovacao', agente_id: perfil.id }).eq('id', demandaAtiva.id)
-      await supabase.from('demanda_historico').insert({
-        demanda_id: demandaAtiva.id, status_anterior: 'aguardando_opcoes',
-        status_novo: 'aguardando_aprovacao', usuario_id: perfil.id,
-      })
-      setDemandas(prev => prev.filter(d => d.id !== demandaAtiva.id))
+      if (editando) {
+        // Substitui as opções existentes; status permanece aguardando_aprovacao
+        await supabase.from('opcoes').delete().eq('demanda_id', demandaAtiva.id)
+        await supabase.from('opcoes').insert(inserir)
+        await supabase.from('demanda_historico').insert({
+          demanda_id: demandaAtiva.id, status_anterior: 'aguardando_aprovacao',
+          status_novo: 'aguardando_aprovacao', usuario_id: perfil.id,
+        })
+      } else {
+        await supabase.from('opcoes').insert(inserir)
+        await supabase.from('demandas').update({ status: 'aguardando_aprovacao', agente_id: perfil.id }).eq('id', demandaAtiva.id)
+        await supabase.from('demanda_historico').insert({
+          demanda_id: demandaAtiva.id, status_anterior: 'aguardando_opcoes',
+          status_novo: 'aguardando_aprovacao', usuario_id: perfil.id,
+        })
+        // Mantém na fila (agora editável) com o status local atualizado
+        setDemandas(prev => prev.map(d => d.id === demandaAtiva.id ? { ...d, status: 'aguardando_aprovacao' } : d))
+      }
       setDemandaAtiva(null); setOpcoes([OPCAO_VAZIA()])
-    } catch (err) { alert('Erro ao enviar: ' + err.message)
+    } catch (err) { alert('Erro ao salvar: ' + err.message)
     } finally { setEnviando(false) }
   }
 
@@ -226,7 +296,11 @@ export default function FilaOpcoes() {
       <div className="w-80 border-r flex flex-col bg-white" style={{ borderColor: '#E5E7EB' }}>
         <div className="px-4 py-4 border-b" style={{ borderColor: '#E5E7EB' }}>
           <h1 className="text-base font-semibold" style={{ color: '#1A1614' }}>Demandas</h1>
-          <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>{demandas.length} aguardando opções</p>
+          <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>
+            {demandas.length} na fila
+            {demandas.some(d => d.status === 'aguardando_aprovacao') &&
+              ` · ${demandas.filter(d => d.status === 'aguardando_aprovacao').length} enviada(s)`}
+          </p>
         </div>
         {loading ? (
           <div className="flex-1 flex items-center justify-center">
@@ -240,7 +314,7 @@ export default function FilaOpcoes() {
           <div className="flex-1 overflow-y-auto">
             {demandas.map(d => (
               <button key={d.id}
-                onClick={() => { setDemandaAtiva(d); setOpcoes([OPCAO_VAZIA()]) }}
+                onClick={() => selecionarDemanda(d)}
                 className="w-full text-left px-4 py-3 border-b transition-colors hover:bg-gray-50"
                 style={{
                   borderColor: '#F3F4F6',
@@ -261,6 +335,12 @@ export default function FilaOpcoes() {
                     : d.tipo === 'posvenda' ? (d.observacoes?.substring(0,30) ?? 'Pós-venda')
                     : `${d.origem ?? '?'} → ${d.destino ?? '?'}`}
                 </p>
+                {d.status === 'aguardando_aprovacao' && (
+                  <span className="inline-block mt-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full"
+                    style={{ background: '#FEF3C7', color: '#E8820C' }}>
+                    enviada · editável
+                  </span>
+                )}
                 <div className="flex items-center justify-between mt-1">
                   <p className="text-xs" style={{ color: '#9CA3AF' }}>{d.empresas?.nome}</p>
                   <p className="text-xs" style={{ color: '#9CA3AF' }}>
@@ -324,8 +404,21 @@ export default function FilaOpcoes() {
               )}
             </div>
 
+            {demandaAtiva.status === 'aguardando_aprovacao' && (
+              <div className="mb-4 flex gap-2 text-sm p-3 rounded-lg" style={{ background: '#FEF3C7', color: '#92610A' }}>
+                <MessageSquare size={14} className="mt-0.5 flex-shrink-0" />
+                Esta demanda já foi enviada para aprovação. Você pode ajustar as opções abaixo e salvar; as opções anteriores serão substituídas.
+              </div>
+            )}
+
             <h2 className="text-sm font-semibold mb-3" style={{ color: '#1A1614' }}>Opções de viagem</h2>
 
+            {carregandoOpcoes ? (
+              <div className="flex items-center gap-2 text-sm py-8 justify-center" style={{ color: '#9CA3AF' }}>
+                <Loader2 size={16} className="animate-spin" /> Carregando opções enviadas...
+              </div>
+            ) : (
+            <>
             <div className="space-y-4">
               {opcoes.map((op, idx) => (
                 <div key={idx} className="card p-4">
@@ -486,9 +579,15 @@ export default function FilaOpcoes() {
             <div className="flex justify-end mt-5">
               <button onClick={enviarOpcoes} disabled={enviando} className="btn-primary px-6">
                 {enviando ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-                {enviando ? 'Enviando...' : 'Enviar opções para aprovação'}
+                {enviando
+                  ? 'Salvando...'
+                  : demandaAtiva.status === 'aguardando_aprovacao'
+                    ? 'Salvar alterações'
+                    : 'Enviar opções para aprovação'}
               </button>
             </div>
+            </>
+            )}
           </div>
         )}
       </div>
