@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import StatusBadge from '../../components/ui/StatusBadge'
@@ -127,6 +127,7 @@ function PostVendaOpcaoForm({ op, idx, setOpcao, demanda }) {
 
 export default function FilaOpcoes() {
   const { perfil } = useAuth()
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [demandas, setDemandas] = useState([])
   const [loading, setLoading]   = useState(true)
@@ -136,21 +137,21 @@ export default function FilaOpcoes() {
   const [carregandoOpcoes, setCarregandoOpcoes] = useState(false)
 
   useEffect(() => {
+    const SELECT = `
+      id, tipo, status, origem, destino, data_ida, data_volta,
+      cidade, checkin, checkout, observacoes, bagagem, created_at,
+      passageiros(nome, sobrenome),
+      obras(nome),
+      solicitante:perfis!solicitante_id(nome),
+      empresas(nome)
+    `
     async function load() {
+      // Fila mostra só o que ainda está aguardando opções (enviadas saem da fila)
       const { data } = await supabase
         .from('demandas')
-        .select(`
-          id, tipo, status, origem, destino, data_ida, data_volta,
-          cidade, checkin, checkout, observacoes, bagagem, created_at,
-          passageiros(nome, sobrenome),
-          obras(nome),
-          solicitante:perfis!solicitante_id(nome),
-          empresas(nome)
-        `)
-        .in('status', ['aguardando_opcoes', 'aguardando_aprovacao'])
+        .select(SELECT)
+        .eq('status', 'aguardando_opcoes')
         .order('data_ida', { ascending: true, nullsFirst: false })
-
-      // Existing options reload happens lazily on selection (only for already-submitted demandas)
 
       // Sort: viagem by data_ida, hospedagem by checkin, nulls last
       const sorted = (data ?? []).sort((a, b) => {
@@ -161,10 +162,11 @@ export default function FilaOpcoes() {
       setDemandas(sorted)
       setLoading(false)
 
-      // Se veio de "Revisar opções" no detalhe, já abre a demanda indicada
+      // Se veio de "Revisar opções" no detalhe, abre aquela demanda no editor (mesmo já enviada)
       const alvoId = searchParams.get('demanda')
       if (alvoId) {
-        const alvo = sorted.find(d => String(d.id) === String(alvoId))
+        const { data: alvo } = await supabase
+          .from('demandas').select(SELECT).eq('id', alvoId).maybeSingle()
         if (alvo) selecionarDemanda(alvo)
       }
     }
@@ -275,13 +277,15 @@ export default function FilaOpcoes() {
       const inserir = await montarPayload(validas)
 
       if (editando) {
-        // Substitui as opções existentes; status permanece aguardando_aprovacao
+        // Revisão: substitui as opções existentes; status permanece aguardando_aprovacao
         await supabase.from('opcoes').delete().eq('demanda_id', demandaAtiva.id)
         await supabase.from('opcoes').insert(inserir)
         await supabase.from('demanda_historico').insert({
           demanda_id: demandaAtiva.id, status_anterior: 'aguardando_aprovacao',
           status_novo: 'aguardando_aprovacao', usuario_id: perfil.id,
         })
+        // Volta pra tela de detalhe da demanda revisada
+        navigate(`/app/demandas/${demandaAtiva.id}`)
       } else {
         await supabase.from('opcoes').insert(inserir)
         await supabase.from('demandas').update({ status: 'aguardando_aprovacao', agente_id: perfil.id }).eq('id', demandaAtiva.id)
@@ -289,10 +293,10 @@ export default function FilaOpcoes() {
           demanda_id: demandaAtiva.id, status_anterior: 'aguardando_opcoes',
           status_novo: 'aguardando_aprovacao', usuario_id: perfil.id,
         })
-        // Mantém na fila (agora editável) com o status local atualizado
-        setDemandas(prev => prev.map(d => d.id === demandaAtiva.id ? { ...d, status: 'aguardando_aprovacao' } : d))
+        // Enviada: sai da fila
+        setDemandas(prev => prev.filter(d => d.id !== demandaAtiva.id))
+        setDemandaAtiva(null); setOpcoes([OPCAO_VAZIA()])
       }
-      setDemandaAtiva(null); setOpcoes([OPCAO_VAZIA()])
     } catch (err) { alert('Erro ao salvar: ' + err.message)
     } finally { setEnviando(false) }
   }
@@ -306,9 +310,7 @@ export default function FilaOpcoes() {
         <div className="px-4 py-4 border-b" style={{ borderColor: '#E5E7EB' }}>
           <h1 className="text-base font-semibold" style={{ color: '#1A1614' }}>Demandas</h1>
           <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>
-            {demandas.length} na fila
-            {demandas.some(d => d.status === 'aguardando_aprovacao') &&
-              ` · ${demandas.filter(d => d.status === 'aguardando_aprovacao').length} enviada(s)`}
+            {demandas.length} aguardando opções
           </p>
         </div>
         {loading ? (
@@ -344,12 +346,6 @@ export default function FilaOpcoes() {
                     : d.tipo === 'posvenda' ? (d.observacoes?.substring(0,30) ?? 'Pós-venda')
                     : `${d.origem ?? '?'} → ${d.destino ?? '?'}`}
                 </p>
-                {d.status === 'aguardando_aprovacao' && (
-                  <span className="inline-block mt-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full"
-                    style={{ background: '#FEF3C7', color: '#E8820C' }}>
-                    enviada · editável
-                  </span>
-                )}
                 <div className="flex items-center justify-between mt-1">
                   <p className="text-xs" style={{ color: '#9CA3AF' }}>{d.empresas?.nome}</p>
                   <p className="text-xs" style={{ color: '#9CA3AF' }}>
