@@ -7,7 +7,7 @@ import TipoBadge from '../../components/ui/TipoBadge'
 import {
   ChevronLeft, Luggage, Calendar, MapPin, User, Building2,
   Clock, CheckCircle, XCircle, Loader2, Upload, RotateCcw, Trash2,
-  Plane, Bus, Hotel
+  Plane, Bus, Hotel, Pencil
 } from 'lucide-react'
 import { fmtTs, fmtData, fmtDataCurta } from '../../lib/datetime'
 
@@ -357,6 +357,7 @@ export default function DetalheDemanda() {
 
   const pax = demanda.passageiros
   const podAprovar = isAprovador && demanda.status === 'aguardando_aprovacao'
+  const podeRevisarOpcoes = isAgencia && demanda.status === 'aguardando_aprovacao'
   const podeExcluir = demanda.status === 'aguardando_opcoes' && (perfil?.id === demanda.solicitante_id || isAprovador)
   const podeDesaprovar = isAprovador && demanda.status === 'aprovado' && demanda.status !== 'emitido'
 
@@ -422,6 +423,11 @@ export default function DetalheDemanda() {
               : `${demanda.origem} → ${demanda.destino}`}
           </h1>
         </div>
+        {podeRevisarOpcoes && (
+          <button onClick={() => navigate(`/app/fila?demanda=${id}`)} className="btn-secondary flex items-center gap-2">
+            <Pencil size={15} /> Revisar opções
+          </button>
+        )}
         {podeExcluir && (
           <button onClick={() => setShowExcluir(true)} className="btn-secondary flex items-center gap-2 text-red-500 hover:text-red-700">
             <Trash2 size={15} /> Excluir

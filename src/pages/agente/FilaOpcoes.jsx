@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import StatusBadge from '../../components/ui/StatusBadge'
@@ -126,6 +127,7 @@ function PostVendaOpcaoForm({ op, idx, setOpcao, demanda }) {
 
 export default function FilaOpcoes() {
   const { perfil } = useAuth()
+  const [searchParams] = useSearchParams()
   const [demandas, setDemandas] = useState([])
   const [loading, setLoading]   = useState(true)
   const [demandaAtiva, setDemandaAtiva] = useState(null)
@@ -158,6 +160,13 @@ export default function FilaOpcoes() {
       })
       setDemandas(sorted)
       setLoading(false)
+
+      // Se veio de "Revisar opções" no detalhe, já abre a demanda indicada
+      const alvoId = searchParams.get('demanda')
+      if (alvoId) {
+        const alvo = sorted.find(d => String(d.id) === String(alvoId))
+        if (alvo) selecionarDemanda(alvo)
+      }
     }
     load()
   }, [])
