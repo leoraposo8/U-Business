@@ -351,6 +351,7 @@ export default function NovaDemanda() {
     rodo_origem: '', rodo_destino: '', rodo_data_ida: '', rodo_data_volta: '',
     remark_flexivel: false, nova_data_min: '', nova_data_max: '',
     posvenda_tipo: '', localizador_ref: '', nova_data: '', nova_rota: '',
+    pre_reservado: false, localizador_pre: '',
     observacoes: '',
   })
   function set(field, value) { setForm(f => ({ ...f, [field]: value })) }
@@ -479,6 +480,17 @@ export default function NovaDemanda() {
           cidade: form.cidade, checkin: form.checkin, checkout: form.checkout,
           observacoes: obs,
         }]
+      } else if (tipo === 'aereo' && form.pre_reservado) {
+        const obs = [
+          'Pré-reservado',
+          `Localizador: ${form.localizador_pre.trim()}`,
+          form.observacoes,
+        ].filter(Boolean).join(' | ')
+        demandas = [{
+          ...base, tipo: 'aereo',
+          passageiro_id: selecionados[0]?.id || null,
+          observacoes: obs,
+        }]
       } else {
         // Uma demanda só, passageiro principal = primeiro selecionado
         demandas = [{
@@ -512,8 +524,9 @@ export default function NovaDemanda() {
   }
 
   const isViagem = tipo === 'aereo' || tipo === 'rodoviario'
-  const needsPax = tipo !== 'posvenda' && tipo !== ''
-  const paxOk = tipo === 'posvenda' ? true : selecionados.length === qtdPax
+  const isAereoPreReservado = tipo === 'aereo' && form.pre_reservado
+  const needsPax = tipo !== 'posvenda' && tipo !== '' && !isAereoPreReservado
+  const paxOk = tipo === 'posvenda' || isAereoPreReservado ? true : selecionados.length === qtdPax
 
   const canSubmit = (() => {
     if (!perfil?.empresa_id && !empresaIdSel) return false
@@ -521,6 +534,7 @@ export default function NovaDemanda() {
     if (tipo === 'posvenda') return !!form.localizador_ref && !!form.posvenda_tipo
     if (tipo === 'hospedagem') return paxOk && !!(form.cidade && form.checkin && form.checkout)
     if (tipo === 'pacote') return selecionados.length > 0 && Object.values(pacoteTipos).some(Boolean)
+    if (isAereoPreReservado) return !!form.localizador_pre.trim()
     return paxOk && !!(form.origem && form.destino && (form.data_ida || form.ida_flexivel))
   })()
 
@@ -627,7 +641,32 @@ export default function NovaDemanda() {
             )}
 
             {/* AÉREO */}
-            {tipo === 'aereo' && <CampoViagem form={form} set={set} tipo="aereo" />}
+            {tipo === 'aereo' && (
+              <>
+                <div className="flex items-center justify-between p-4 rounded-xl border" style={{ background: '#F8F9FA', borderColor: '#E5E7EB' }}>
+                  <div>
+                    <p className="text-sm font-medium" style={{ color: '#1A1614' }}>Pré-reservado</p>
+                    <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>
+                      Já existe uma pré-reserva na consolidadora — cotar milhas do mesmo voo
+                    </p>
+                  </div>
+                  <ToggleSwitch on={form.pre_reservado} onToggle={() => set('pre_reservado', !form.pre_reservado)} label="" />
+                </div>
+                {form.pre_reservado ? (
+                  <div>
+                    <label className="label">Localizador da pré-reserva *</label>
+                    <input className="input" placeholder="Ex: ABCDEF"
+                      value={form.localizador_pre}
+                      onChange={e => set('localizador_pre', e.target.value.toUpperCase())} />
+                    <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>
+                      O agente usa o localizador pra puxar voo, datas e tarifa direto na consolidadora.
+                    </p>
+                  </div>
+                ) : (
+                  <CampoViagem form={form} set={set} tipo="aereo" />
+                )}
+              </>
+            )}
 
             {/* RODOVIÁRIO */}
             {tipo === 'rodoviario' && <CampoViagem form={form} set={set} tipo="rodoviario" />}

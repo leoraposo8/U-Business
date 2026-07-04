@@ -7,6 +7,7 @@ import NovaDemanda from './pages/solicitante/NovaDemanda'
 import ListaDemandas from './pages/solicitante/ListaDemandas'
 import DetalheDemanda from './pages/solicitante/DetalheDemanda'
 import FilaOpcoes from './pages/agente/FilaOpcoes'
+import NovaProposta from './pages/agente/NovaProposta'
 import Clientes from './pages/admin/Clientes'
 import Invoices from './pages/admin/Invoices'
 import Relatorio from './pages/aprovador/Relatorio'
@@ -33,6 +34,7 @@ function AppRoutes() {
         <Route path="demandas"     element={<ListaDemandas />} />
         <Route path="demandas/:id" element={<DetalheDemanda />} />
         <Route path="fila"         element={<FilaOpcoes />} />
+        <Route path="nova-proposta" element={<NovaProposta />} />
         <Route path="clientes"     element={<Clientes />} />
         <Route path="invoices"     element={<Invoices />} />
         <Route path="relatorio"    element={<Relatorio />} />

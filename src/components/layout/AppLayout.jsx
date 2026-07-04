@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import {
   LayoutDashboard, PlusCircle, List, Users, Building2,
-  FileText, LogOut, ChevronRight, Plane, BarChart2, Menu, X
+  FileText, LogOut, ChevronRight, Plane, BarChart2, Menu, X, FileDown
 } from 'lucide-react'
 
 function NavItem({ to, icon: Icon, children, onClick }) {
@@ -80,6 +80,7 @@ export default function AppLayout() {
               </p>
             </div>
             <NavItem to="/app/fila" icon={ChevronRight}>Demandas</NavItem>
+            <NavItem to="/app/nova-proposta" icon={FileDown}>Nova Proposta</NavItem>
             <NavItem to="/app/clientes" icon={Building2}>Clientes</NavItem>
             <NavItem to="/app/invoices" icon={FileText}>Invoices</NavItem>
           </>
