@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/proposta-api/:path*", "destination": "/api/proposta-api/:path*" }
+  ]
+}
