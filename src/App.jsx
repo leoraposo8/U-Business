@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import AppLayout from './components/layout/AppLayout'
 import Login from './pages/auth/Login'
+import EsqueciSenha from './pages/auth/EsqueciSenha'
+import RedefinirSenha from './pages/auth/RedefinirSenha'
 import Dashboard from './pages/Dashboard'
 import NovaDemanda from './pages/solicitante/NovaDemanda'
 import ListaDemandas from './pages/solicitante/ListaDemandas'
@@ -11,6 +13,7 @@ import NovaProposta from './pages/agente/NovaProposta'
 import Clientes from './pages/admin/Clientes'
 import Invoices from './pages/admin/Invoices'
 import Relatorio from './pages/aprovador/Relatorio'
+import Perfil from './pages/Perfil'
 import { Loader2 } from 'lucide-react'
 
 function PrivateRoute({ children }) {
@@ -27,6 +30,8 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/esqueci-senha" element={<EsqueciSenha />} />
+      <Route path="/redefinir-senha" element={<RedefinirSenha />} />
       <Route path="/app" element={<PrivateRoute><AppLayout /></PrivateRoute>}>
         <Route index element={<Navigate to="/app/dashboard" replace />} />
         <Route path="dashboard"    element={<Dashboard />} />
@@ -38,6 +43,7 @@ function AppRoutes() {
         <Route path="clientes"     element={<Clientes />} />
         <Route path="invoices"     element={<Invoices />} />
         <Route path="relatorio"    element={<Relatorio />} />
+        <Route path="perfil"       element={<Perfil />} />
         {/* <Route path="invoices"   element={<Invoices />} /> */}
       </Route>
       <Route path="*" element={<Navigate to="/login" replace />} />

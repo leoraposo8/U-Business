@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import {
   LayoutDashboard, PlusCircle, List, Users, Building2,
-  FileText, LogOut, ChevronRight, Plane, BarChart2, Menu, X, FileDown
+  FileText, LogOut, ChevronRight, Plane, BarChart2, Menu, X, FileDown, User
 } from 'lucide-react'
 
 function NavItem({ to, icon: Icon, children, onClick }) {
@@ -119,6 +119,7 @@ export default function AppLayout() {
             {perfil?.empresas?.nome ?? 'U Business'}
           </p>
         </div>
+        <NavItem to="/app/perfil" icon={User}>Meu perfil</NavItem>
         <button
           onClick={handleLogout}
           className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm transition-all"

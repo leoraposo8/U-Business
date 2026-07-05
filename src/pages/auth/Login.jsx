@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { Plane, Loader2 } from 'lucide-react'
 
@@ -74,6 +74,12 @@ export default function Login() {
               {loading ? <Loader2 size={16} className="animate-spin" /> : null}
               {loading ? 'Entrando...' : 'Entrar'}
             </button>
+
+            <div className="text-center pt-1">
+              <Link to="/esqueci-senha" className="text-sm text-slate-400 hover:text-white">
+                Esqueci minha senha
+              </Link>
+            </div>
           </form>
         </div>
       </div>

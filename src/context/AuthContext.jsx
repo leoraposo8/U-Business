@@ -43,7 +43,7 @@ export function AuthProvider({ children }) {
   }
 
   const isAgencia   = perfil?.perfil === 'admin_agencia' || perfil?.perfil === 'agente'
-  const isAprovador = perfil?.perfil === 'aprovador' || perfil?.perfil === 'admin_cliente'
+  const isAprovador = perfil?.perfil === 'aprovador' || perfil?.perfil === 'admin_cliente' || perfil?.perfil === 'admin_agencia'
   const isAdmin     = perfil?.perfil === 'admin_agencia'
 
   return (
