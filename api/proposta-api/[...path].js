@@ -5,7 +5,7 @@
 const API_URL = process.env.PROPOSTA_API_URL || 'https://ubusiness-proposta-api.onrender.com'
 const API_KEY = process.env.PROPOSTA_API_KEY
 
-export const config = { runtime: 'nodejs' }
+export const config = { runtime: 'nodejs', maxDuration: 60 }
 
 export default async function handler(req, res) {
   if (!API_KEY) {
@@ -24,13 +24,26 @@ export default async function handler(req, res) {
 
   let body
   if (req.method !== 'GET' && req.method !== 'HEAD') {
-    const chunks = []
-    for await (const c of req) chunks.push(c)
-    body = Buffer.concat(chunks)
+    if (req.body !== undefined && req.body !== null) {
+      // Vercel Node runtime ja parseia application/json e x-www-form-urlencoded
+      if (typeof req.body === 'string' || Buffer.isBuffer(req.body)) {
+        body = req.body
+      } else {
+        body = JSON.stringify(req.body)
+        if (!headers['content-type']) headers['content-type'] = 'application/json'
+      }
+    } else {
+      // multipart u outros: le do stream
+      const chunks = []
+      for await (const c of req) chunks.push(c)
+      body = Buffer.concat(chunks)
+    }
   }
 
   try {
+    console.log(`[proxy] ${req.method} ${target} · body=${body?.length ?? 0}b`)
     const upstream = await fetch(target, { method: req.method, headers, body })
+    console.log(`[proxy] upstream ${upstream.status}`)
     res.status(upstream.status)
     upstream.headers.forEach((v, k) => {
       const kl = k.toLowerCase()
