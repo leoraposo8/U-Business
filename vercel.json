@@ -1,5 +1,6 @@
 {
   "rewrites": [
-    { "source": "/proposta-api/:path*", "destination": "/api/proposta-api/:path*" }
+    { "source": "/proposta-api/gerar-proposta", "destination": "/api/gerar-proposta" },
+    { "source": "/proposta-api/interpretar-print", "destination": "/api/interpretar-print" }
   ]
 }
