@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { Plane, Loader2 } from 'lucide-react'
@@ -10,6 +10,16 @@ export default function Login() {
   const [senha, setSenha] = useState('')
   const [erro, setErro] = useState('')
   const [loading, setLoading] = useState(false)
+
+  // Se o usuario chegou aqui via link de convite/reset (Supabase caiu no
+  // fallback Site URL), redireciona pra pagina de definir senha
+  // preservando o hash com o access_token.
+  useEffect(() => {
+    const hash = window.location.hash
+    if (hash && (hash.includes('access_token=') || hash.includes('type=invite') || hash.includes('type=recovery'))) {
+      navigate('/redefinir-senha' + hash, { replace: true })
+    }
+  }, [])
 
   async function handleSubmit(e) {
     e.preventDefault()
