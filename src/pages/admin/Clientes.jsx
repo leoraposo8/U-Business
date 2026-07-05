@@ -70,19 +70,25 @@ function NovoUsuarioModal({ empresa, onSalvar, onFechar }) {
     if (!form.email || !form.nome) return
     setSalvando(true); setErro('')
     try {
-      // Create user with a temp password — they'll reset via email
-      const { data: authData, error: authErr } = await supabase.auth.admin.createUser({
-        email: form.email, email_confirm: true,
-        user_metadata: { nome: form.nome }
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('Sessao expirada. Faca login novamente.')
+
+      const res = await fetch('/api/convidar-usuario', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          email: form.email,
+          nome: form.nome,
+          perfil: form.perfil,
+          empresa_id: empresa.id,
+        }),
       })
-      if (authErr) throw authErr
-      const { error: perfilErr } = await supabase.from('perfis').insert({
-        id: authData.user.id, empresa_id: empresa.id, nome: form.nome, perfil: form.perfil,
-      })
-      if (perfilErr) throw perfilErr
-      // Send password reset so they can set their own password
-      await supabase.auth.resetPasswordForEmail(form.email)
-      onSalvar({ ...authData.user, nome: form.nome, perfil: form.perfil })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(j.detail || `Erro ${res.status}`)
+      onSalvar({ id: j.user_id, email: form.email, nome: form.nome, perfil: form.perfil })
     } catch (err) { setErro(err.message)
     } finally { setSalvando(false) }
   }
