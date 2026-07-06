@@ -492,7 +492,7 @@ function FormRF({ o, onChange, onCliente }) {
           <input className="input" placeholder="18000" value={o.tarifa} onChange={e => onChange({ tarifa: e.target.value })} />
         </div>
         <div>
-          <label className="label">Taxas (US$)</label>
+          <label className="label">Taxa+RC+YQ</label>
           <input className="input" placeholder="1200" value={o.taxas} onChange={e => onChange({ taxas: e.target.value })} />
         </div>
         <div>
@@ -700,7 +700,7 @@ function CamposRF({ e, onChange }) {
     <>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
         <div><label className="label">Tarifa (US$)</label><input className="input" placeholder="3300" value={e.tarifa} onChange={ev => onChange({ tarifa: ev.target.value })} /></div>
-        <div><label className="label">Taxas (US$)</label><input className="input" placeholder="220" value={e.taxas} onChange={ev => onChange({ taxas: ev.target.value })} /></div>
+        <div><label className="label">Taxa+RC+YQ</label><input className="input" placeholder="220" value={e.taxas} onChange={ev => onChange({ taxas: ev.target.value })} /></div>
         <div><label className="label">RAV %</label><input className="input" placeholder="5" value={e.rav_pct} onChange={ev => onChange({ rav_pct: ev.target.value })} /></div>
         <div><label className="label">Câmbio</label><input className="input" placeholder="5,40" value={e.cambio} onChange={ev => onChange({ cambio: ev.target.value })} /></div>
       </div>
