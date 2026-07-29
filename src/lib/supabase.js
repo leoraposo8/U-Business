@@ -7,7 +7,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 /*
 ══════════════════════════════════════════════════════════════
-  SQL — rodar no Supabase SQL Editor antes de usar o sistema
+  SQL — schema completo (rodar no Supabase SQL Editor).
+  Fonte-de-verdade: este comentário reflete o estado do banco
+  após todas as migrations em `supabase/migrations/`.
 ══════════════════════════════════════════════════════════════
 
 -- EMPRESAS
@@ -34,10 +36,31 @@ create table perfis (
   id uuid primary key references auth.users(id) on delete cascade,
   empresa_id uuid references empresas(id),  -- null = U Business
   nome text not null,
-  perfil text not null check (perfil in ('admin_agencia','agente','admin_cliente','aprovador','solicitante')),
+  telefone text,                            -- p/ notificação WhatsApp
+  perfil text not null check (perfil in ('admin_agencia','agente','aprovador_1','aprovador_2','solicitante')),
   ativo boolean default true,
   created_at timestamptz default now()
 );
+
+-- ALÇADAS DO APROVADOR_1 (aprovador_2 é ilimitado por definição)
+-- valor_limite NULL = ilimitado pra este tipo (checkbox "ilimitado" na UI).
+-- A UI obriga o cadastro dos 3 tipos (aereo, rodoviario, hospedagem);
+-- se faltar linha, o roteamento trata como bloqueado e escala pro nível 2.
+create table aprovador_limites (
+  usuario_id   uuid not null references perfis(id) on delete cascade,
+  tipo_item    text not null check (tipo_item in ('aereo','rodoviario','hospedagem')),
+  valor_limite numeric(12,2) check (valor_limite is null or valor_limite >= 0),
+  primary key (usuario_id, tipo_item)
+);
+
+-- VÍNCULO N:N APROVADOR_1 ↔ OBRAS (centros de custo que ele cobre).
+-- Obra sem aprovador_1 vinculado → demanda vai direto pro aprovador_2.
+create table aprovador_obras (
+  usuario_id uuid not null references perfis(id) on delete cascade,
+  obra_id    uuid not null references obras(id)  on delete cascade,
+  primary key (usuario_id, obra_id)
+);
+create index aprovador_obras_obra_idx on aprovador_obras(obra_id);
 
 -- PASSAGEIROS (quem viaja — pode não ter login)
 create table passageiros (
@@ -60,7 +83,7 @@ create table demandas (
   passageiro_id uuid references passageiros(id),
   tipo text not null check (tipo in ('aereo','rodoviario','hospedagem')),
   status text not null default 'rascunho' check (status in (
-    'rascunho','aguardando_opcoes','aguardando_aprovacao',
+    'rascunho','aguardando_opcoes','aguardando_aprovacao','aguardando_aprovacao_2',
     'aprovado','emitido','rejeitado','cancelado'
   )),
   agente_id uuid references perfis(id),
@@ -166,6 +189,8 @@ alter table bilhetes enable row level security;
 alter table invoices enable row level security;
 alter table invoice_itens enable row level security;
 alter table demanda_historico enable row level security;
+alter table aprovador_limites enable row level security;
+alter table aprovador_obras enable row level security;
 
 -- FUNÇÃO auxiliar: retorna empresa_id do usuário logado
 create or replace function minha_empresa_id()
@@ -200,6 +225,38 @@ create policy "perfis_próprio_e_agência" on perfis
     or empresa_id = minha_empresa_id()
     or meu_perfil() in ('admin_agencia','agente')
   );
+
+-- Leitura de alçadas: próprio aprovador vê; qualquer um da mesma empresa
+-- lê (necessário pro roteamento); agência vê tudo. Escrita: só admin_agencia.
+create policy "aprovador_limites_read" on aprovador_limites
+  for select using (
+    usuario_id = auth.uid()
+    or exists (
+      select 1 from perfis p
+      where p.id = aprovador_limites.usuario_id
+        and (p.empresa_id = minha_empresa_id()
+             or meu_perfil() in ('admin_agencia','agente'))
+    )
+  );
+
+create policy "aprovador_limites_write" on aprovador_limites
+  for all using (meu_perfil() = 'admin_agencia')
+  with check (meu_perfil() = 'admin_agencia');
+
+create policy "aprovador_obras_read" on aprovador_obras
+  for select using (
+    usuario_id = auth.uid()
+    or exists (
+      select 1 from perfis p
+      where p.id = aprovador_obras.usuario_id
+        and (p.empresa_id = minha_empresa_id()
+             or meu_perfil() in ('admin_agencia','agente'))
+    )
+  );
+
+create policy "aprovador_obras_write" on aprovador_obras
+  for all using (meu_perfil() = 'admin_agencia')
+  with check (meu_perfil() = 'admin_agencia');
 
 ==============================
 */

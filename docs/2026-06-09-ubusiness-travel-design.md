@@ -1,7 +1,9 @@
 # U Business Travel — Design Document
-**Data:** 09/06/2026  
-**Versão:** 1.0  
+**Data original:** 09/06/2026 · **Última revisão:** 29/07/2026  
+**Versão:** 1.1  
 **Autor:** U Business Agência de Viagens
+
+> **Changelog v1.1 (29/07/2026):** requisitos da DTA Engenharia (primeiro cliente contratado) puxaram para v1 dois itens antes previstos como futuros: (i) níveis de aprovador com alçada customizável e (ii) notificação WhatsApp. Perfil `admin_cliente` foi cortado — agência faz todo o cadastro/config; C-level financeiro da empresa cliente vira `aprovador_2`.
 
 ---
 
@@ -34,10 +36,10 @@ Cada empresa cliente é um **tenant** isolado. Row Level Security (RLS) do Supab
 
 | Perfil | Quem é | O que pode fazer |
 |--------|--------|-----------------|
-| `admin_agencia` | U Business (dono/sócios) | Tudo: configurar tenants, ver todas demandas, emitir bilhetes, gerar invoices |
+| `admin_agencia` | U Business (dono/sócios) | Tudo: configurar tenants, cadastrar usuários dos clientes, ver todas demandas, emitir bilhetes, gerar invoices |
 | `agente` | Funcionários U Business | Ver demandas atribuídas, enviar opções, registrar emissão |
-| `admin_cliente` | Adm central da empresa | Cadastrar usuários da empresa, definir aprovadores, ver relatórios |
-| `aprovador` | Gerentes/diretores | Aprovar ou rejeitar demandas com comentário |
+| `aprovador_2` | Diretor/C-level do cliente | Aprova **qualquer valor** (ilimitado por definição); vê tudo da empresa. Recebe demandas escaladas pelo nível 1 |
+| `aprovador_1` | Gerente vinculado a 1+ centros de custo | Aprova demandas dos seus centros até os **limites customizáveis** (aereo R$/emissão, rodoviario R$/emissão, hospedagem R$/noite). Cada limite pode ser numérico ou "ilimitado". Acima do teto → escala pro `aprovador_2` |
 | `solicitante` | Adm de obra / funcionário | Abrir novas demandas para si ou para terceiros |
 
 ---
@@ -53,9 +55,20 @@ empresas
 obras (centros de custo)
   id, empresa_id, nome, codigo, responsavel, ativo
 
-usuarios
-  id, empresa_id (null = U Business), nome, email, perfil, ativo
-  → auth gerenciado pelo Supabase Auth
+perfis  (tabela real; complemento ao auth.users do Supabase)
+  id (=auth.users.id), empresa_id (null = U Business), nome, email,
+  telefone, perfil, ativo
+  → perfil ∈ {admin_agencia, agente, aprovador_1, aprovador_2, solicitante}
+  → telefone usado pra notificação WhatsApp
+
+aprovador_limites  (só faz sentido pra aprovador_1)
+  usuario_id, tipo_item [aereo|rodoviario|hospedagem], valor_limite
+  → valor_limite NULL = ilimitado pra esse tipo
+  → UI obriga cadastro dos 3 tipos; linha ausente = bloqueia esse tipo
+
+aprovador_obras  (N:N — aprovador_1 ↔ centros de custo que cobre)
+  usuario_id, obra_id
+  → obra sem aprovador_1 vinculado → demanda vai direto pro aprovador_2
 
 passageiros
   id, empresa_id, nome, cpf, rg, nascimento, contato
@@ -64,7 +77,7 @@ passageiros
 demandas
   id, empresa_id, obra_id, solicitante_id, passageiro_id
   tipo: [aereo | rodoviario | hospedagem]
-  status: [rascunho | aguardando_opcoes | aguardando_aprovacao | aprovado | emitido | rejeitado | cancelado]
+  status: [rascunho | aguardando_opcoes | aguardando_aprovacao | aguardando_aprovacao_2 | aprovado | emitido | rejeitado | cancelado]
   agente_id (nullable), aprovador_id (nullable)
   created_at, updated_at
 
@@ -123,12 +136,23 @@ SOLICITANTE abre demanda
 SISTEMA notifica agentes (badge/contador no painel — sem e-mail por ora)
   → status: aguardando_opcoes
 
-AGENTE envia 1–3 opções (com preço, invisível ao cliente)
+AGENTE envia 1–3 opções (com preço de venda visível ao cliente)
   → status: aguardando_aprovacao
+  → destinatário: APROVADOR_1 do centro de custo (ou APROVADOR_2 se o
+    CC não tem aprovador_1 vinculado)
 
-APROVADOR vê opções (sem preço) e decide:
-  ├── Aprova → status: aprovado
-  └── Rejeita + comentário → status: rejeitado → volta para agente revisar
+APROVADOR_1 vê opções e escolhe uma:
+  ├── Rejeita + comentário → status: rejeitado → volta pro agente revisar
+  └── Aprova a opção X → sistema compara preço da opção contra o limite
+      do aprovador pra o tipo da demanda:
+      ├── Dentro do limite (ou limite ilimitado)  → status: aprovado
+      └── Acima do limite                         → status: aguardando_aprovacao_2
+          → sobe pro APROVADOR_2 (registro de endosso do nível 1 fica
+            gravado em `aprovacoes`)
+
+APROVADOR_2 (quando envolvido) revê a mesma opção:
+  ├── Aprova   → status: aprovado
+  └── Rejeita  → status: rejeitado → volta pro agente revisar
 
 AGENTE emite o bilhete e registra:
   - localizador, assento, companhia
@@ -147,7 +171,7 @@ ADMIN AGÊNCIA gera invoice:
 ## 6. Regras de Negócio
 
 1. **Preço nunca visível ao cliente** — campo `preco` na tabela `opcoes` só retorna via RLS para perfis `agente` e `admin_agencia`
-2. **Aprovador aprova qualquer valor** — sem teto de alçada (v1)
+2. **Alçada por nível:** `aprovador_1` tem tetos customizáveis por tipo de item (nullable = ilimitado); `aprovador_2` sempre aprova qualquer valor. Escalação é automática ao clicar "aprovar" numa opção acima do teto.
 3. **Passageiro = qualquer pessoa** — qualquer usuário com login pode abrir solicitação. O campo passageiro indica quem vai viajar (pode ser o próprio solicitante ou outra pessoa — colega, funcionário de obra etc.)
 4. **Multi-tenant isolado** — RLS garante que empresa A nunca vê dados da empresa B
 5. **Preço de venda visível ao cliente** — o aprovador vê o preço de venda (o que a agência cobra) para tomar a decisão. O **custo** (o que a agência pagou) é invisível — essa é a margem protegida
@@ -191,9 +215,10 @@ ADMIN AGÊNCIA gera invoice:
 
 | Fase | Escopo | Quando |
 |------|--------|--------|
-| MVP | Fluxo completo 1 cliente (CB Construções) + 1 agente | Primeira entrega |
-| v1.1 | Multi-tenant (N clientes) + invoice PDF | Após validação |
-| v1.2 | Notificações WhatsApp via Evolution API | Futuro |
+| MVP | Fluxo completo 1 cliente (CB Construções) + 1 agente | Entregue |
+| v1.0 | Multi-tenant (N clientes) + invoice PDF | Entregue |
+| **v1.1 (em curso — DTA)** | Níveis de aprovador com alçada customizável; escalação automática | Julho/2026 |
+| v1.2 | Notificações WhatsApp via Evolution API | Após v1.1 |
 | v1.3 | App mobile (PWA) | Futuro |
 
 ---
@@ -202,8 +227,9 @@ ADMIN AGÊNCIA gera invoice:
 
 | Decisão | Escolha | Motivo |
 |---------|---------|--------|
-| Notificações | Apenas painel (v1) | Solicitante já cobra aprovador via WhatsApp pessoal |
-| Aprovação | Qualquer valor, 1 aprovador | Regra do cliente |
+| Notificações | Apenas painel (MVP/v1.0); WhatsApp em v1.2 | Solicitante já cobra aprovador via WhatsApp pessoal na v1.0 |
+| Aprovação | 2 níveis (v1.1): `aprovador_1` com alçada customizável + `aprovador_2` ilimitado | Puxado pra v1.1 por requisito da DTA (não fecha contrato sem) |
+| Admin do cliente | Perfil `admin_cliente` cortado (v1.1) | Agência faz todo o cadastro/config; C-level do cliente vira `aprovador_2` |
 | Passageiro | Qualquer usuário logado pode solicitar para si ou para outra pessoa | Flexibilidade — não precisa de cadastro separado |
 | Preço de venda | Visível a todos (aprovador, solicitante) | Aprovador precisa saber o que está aprovando |
 | Custo / margem | Fora do sistema | Controlado em planilha separada pela agência |

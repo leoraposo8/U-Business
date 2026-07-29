@@ -86,7 +86,7 @@ export default function AppLayout() {
           </>
         )}
 
-        {(perfil?.perfil === 'aprovador' || perfil?.perfil === 'admin_cliente') && (
+        {(perfil?.perfil === 'aprovador_1' || perfil?.perfil === 'aprovador_2') && (
           <>
             <div className="pt-3 pb-1">
               <p className="px-3 text-xs font-medium uppercase tracking-wider"
@@ -95,18 +95,6 @@ export default function AppLayout() {
               </p>
             </div>
             <NavItem to="/app/relatorio" icon={BarChart2}>Gastos</NavItem>
-          </>
-        )}
-
-        {perfil?.perfil === 'admin_cliente' && (
-          <>
-            <div className="pt-3 pb-1">
-              <p className="px-3 text-xs font-medium uppercase tracking-wider"
-                 style={{ color: 'rgba(255,255,255,0.4)' }}>
-                Empresa
-              </p>
-            </div>
-            <NavItem to="/app/usuarios" icon={Users}>Usuários</NavItem>
           </>
         )}
       </nav>

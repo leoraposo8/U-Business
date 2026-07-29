@@ -42,12 +42,17 @@ export function AuthProvider({ children }) {
     await supabase.auth.signOut()
   }
 
-  const isAgencia   = perfil?.perfil === 'admin_agencia' || perfil?.perfil === 'agente'
-  const isAprovador = perfil?.perfil === 'aprovador' || perfil?.perfil === 'admin_cliente' || perfil?.perfil === 'admin_agencia'
-  const isAdmin     = perfil?.perfil === 'admin_agencia'
+  const isAgencia    = perfil?.perfil === 'admin_agencia' || perfil?.perfil === 'agente'
+  const isAprovador1 = perfil?.perfil === 'aprovador_1'
+  const isAprovador2 = perfil?.perfil === 'aprovador_2'
+  const isAprovador  = isAprovador1 || isAprovador2 || perfil?.perfil === 'admin_agencia'
+  const isAdmin      = perfil?.perfil === 'admin_agencia'
 
   return (
-    <AuthContext.Provider value={{ user, perfil, loading, login, logout, isAgencia, isAprovador, isAdmin }}>
+    <AuthContext.Provider value={{
+      user, perfil, loading, login, logout,
+      isAgencia, isAprovador, isAprovador1, isAprovador2, isAdmin,
+    }}>
       {children}
     </AuthContext.Provider>
   )

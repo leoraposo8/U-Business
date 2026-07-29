@@ -1,11 +1,12 @@
 const config = {
-  rascunho:             { label: 'Rascunho',             bg: '#F3F4F6', color: '#6B7280' },
-  aguardando_opcoes:    { label: 'Aguardando opções',    bg: '#F5F3FF', color: '#5B2D8E' },
-  aguardando_aprovacao: { label: 'Aguardando aprovação', bg: '#FEF3C7', color: '#E8820C' },
-  aprovado:             { label: 'Aprovado',             bg: '#ECFDF5', color: '#059669' },
-  emitido:              { label: 'Emitido',              bg: '#F3F4F6', color: '#6B7280' },
-  rejeitado:            { label: 'Rejeitado',            bg: '#FEF2F2', color: '#DC2626' },
-  cancelado:            { label: 'Cancelado',            bg: '#F3F4F6', color: '#9CA3AF' },
+  rascunho:                { label: 'Rascunho',                bg: '#F3F4F6', color: '#6B7280' },
+  aguardando_opcoes:       { label: 'Aguardando opções',       bg: '#F5F3FF', color: '#5B2D8E' },
+  aguardando_aprovacao:    { label: 'Aguardando aprovação N1', bg: '#FEF3C7', color: '#E8820C' },
+  aguardando_aprovacao_2:  { label: 'Aguardando aprovação N2', bg: '#FFEDD5', color: '#C2410C' },
+  aprovado:                { label: 'Aprovado',                bg: '#ECFDF5', color: '#059669' },
+  emitido:                 { label: 'Emitido',                 bg: '#F3F4F6', color: '#6B7280' },
+  rejeitado:               { label: 'Rejeitado',               bg: '#FEF2F2', color: '#DC2626' },
+  cancelado:               { label: 'Cancelado',               bg: '#F3F4F6', color: '#9CA3AF' },
 }
 
 export default function StatusBadge({ status }) {

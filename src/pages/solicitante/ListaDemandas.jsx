@@ -9,11 +9,12 @@ import { fmtTs, fmtData, fmtDataCurta } from '../../lib/datetime'
 
 const STATUS_OPTS = [
   { value: '', label: 'Todos os status' },
-  { value: 'aguardando_opcoes',    label: 'Aguardando opções' },
-  { value: 'aguardando_aprovacao', label: 'Aguardando aprovação' },
-  { value: 'aprovado',             label: 'Aprovado' },
-  { value: 'emitido',              label: 'Emitido' },
-  { value: 'rejeitado',            label: 'Rejeitado' },
+  { value: 'aguardando_opcoes',      label: 'Aguardando opções' },
+  { value: 'aguardando_aprovacao',   label: 'Aguardando aprovação N1' },
+  { value: 'aguardando_aprovacao_2', label: 'Aguardando aprovação N2' },
+  { value: 'aprovado',               label: 'Aprovado' },
+  { value: 'emitido',                label: 'Emitido' },
+  { value: 'rejeitado',              label: 'Rejeitado' },
 ]
 
 // fmt -> use fmtData from lib/datetime
