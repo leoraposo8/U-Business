@@ -1,6 +1,7 @@
 {
   "rewrites": [
     { "source": "/proposta-api/gerar-proposta", "destination": "/api/gerar-proposta" },
-    { "source": "/proposta-api/interpretar-print", "destination": "/api/interpretar-print" }
+    { "source": "/proposta-api/interpretar-print", "destination": "/api/interpretar-print" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }
