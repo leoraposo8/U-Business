@@ -38,9 +38,13 @@ create table perfis (
   nome text not null,
   telefone text,                            -- p/ notificação WhatsApp
   perfil text not null check (perfil in ('admin_agencia','agente','aprovador_1','aprovador_2','solicitante')),
+  passageiro_id uuid references passageiros(id) on delete set null, -- 1:1 opcional
   ativo boolean default true,
   created_at timestamptz default now()
 );
+-- Nota: FK circular c/ passageiros — na migração inicial a coluna é criada
+-- depois via ALTER, ou passageiros é criada primeiro.
+create index perfis_passageiro_id_idx on perfis(passageiro_id);
 
 -- ALÇADAS DO APROVADOR_1 (aprovador_2 é ilimitado por definição)
 -- valor_limite NULL = ilimitado pra este tipo (checkbox "ilimitado" na UI).
@@ -67,12 +71,19 @@ create table passageiros (
   id uuid primary key default gen_random_uuid(),
   empresa_id uuid references empresas(id) on delete cascade,
   nome text not null,
-  cpf text,
+  sobrenome text,
+  cpf text,                        -- opcional no DB; obrigatório na UI de cadastro de user
   rg text,
   nascimento date,
   contato text,
+  azul_tudoazul   text,            -- número TudoAzul (opcional)
+  latam_latampass text,            -- número LATAM Pass (opcional)
+  smiles_gol      text,            -- número Smiles (opcional)
   created_at timestamptz default now()
 );
+-- Unicidade parcial de CPF por empresa (permite passageiros sem CPF).
+create unique index passageiros_empresa_cpf_uniq
+  on passageiros(empresa_id, cpf) where cpf is not null;
 
 -- DEMANDAS
 create table demandas (

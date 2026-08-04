@@ -53,12 +53,17 @@ function hojeISO() {
 }
 
 function NovoPassageiroModal({ onSalvar, onFechar }) {
-  const [form, setForm] = useState({ nome: '', sobrenome: '', cpf: '', nascimento: '', contato: '' })
+  const [form, setForm] = useState({
+    nome: '', sobrenome: '', cpf: '', nascimento: '', contato: '',
+    azul_tudoazul: '', latam_latampass: '', smiles_gol: '',
+  })
   function set(f, v) { setForm(p => ({ ...p, [f]: v })) }
-  const valido = form.nome && form.sobrenome && form.cpf && form.nascimento
+  const cpfDigits = String(form.cpf || '').replace(/\D/g, '')
+  const cpfValido = cpfDigits.length === 11
+  const valido = form.nome && form.sobrenome && cpfValido && form.nascimento
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 my-auto max-h-[calc(100vh-2rem)] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-semibold" style={{ color: '#1A1614' }}>Novo passageiro</h2>
           <button type="button" onClick={onFechar}><X size={20} className="text-gray-400" /></button>
@@ -71,15 +76,31 @@ function NovoPassageiroModal({ onSalvar, onFechar }) {
               <input className="input" placeholder="Sobrenome" value={form.sobrenome} onChange={e => set('sobrenome', e.target.value)} /></div>
           </div>
           <div><label className="label">CPF *</label>
-            <input className="input" placeholder="000.000.000-00" value={form.cpf} onChange={e => set('cpf', e.target.value)} /></div>
+            <input className="input" placeholder="000.000.000-00" value={form.cpf} onChange={e => set('cpf', e.target.value)} />
+            {form.cpf && !cpfValido && (
+              <p className="text-[10px] mt-1" style={{ color: '#DC2626' }}>CPF deve ter 11 dígitos.</p>
+            )}
+          </div>
           <div><label className="label">Data de nascimento *</label>
             <input type="date" className="input" value={form.nascimento} onChange={e => set('nascimento', e.target.value)} /></div>
           <div><label className="label">Celular <span className="text-gray-400 font-normal">(opcional)</span></label>
             <input className="input" placeholder="+55 (11) 99999-9999" value={form.contato} onChange={e => set('contato', e.target.value)} /></div>
+
+          <div className="pt-2 border-t" style={{ borderColor: '#F3F4F6' }}>
+            <label className="label">Programas de fidelidade <span className="text-gray-400 font-normal">(opcional)</span></label>
+            <div className="grid grid-cols-3 gap-2">
+              <input className="input py-1.5 px-2 text-xs" placeholder="TudoAzul"
+                value={form.azul_tudoazul} onChange={e => set('azul_tudoazul', e.target.value)} />
+              <input className="input py-1.5 px-2 text-xs" placeholder="LATAM Pass"
+                value={form.latam_latampass} onChange={e => set('latam_latampass', e.target.value)} />
+              <input className="input py-1.5 px-2 text-xs" placeholder="Smiles"
+                value={form.smiles_gol} onChange={e => set('smiles_gol', e.target.value)} />
+            </div>
+          </div>
         </div>
         <div className="flex gap-3 mt-5">
           <button type="button" onClick={onFechar} className="btn-secondary flex-1">Cancelar</button>
-          <button type="button" onClick={() => valido && onSalvar(form)}
+          <button type="button" onClick={() => valido && onSalvar({ ...form, cpf: cpfDigits })}
             disabled={!valido} className="btn-primary flex-1 justify-center">Adicionar</button>
         </div>
       </div>
@@ -102,10 +123,32 @@ function SeletorPassageiros({ passageiros, selecionados, onChange, qtd, perfil }
     else if (selecionados.length < qtd) onChange([...selecionados, p])
   }
   async function salvarNovo(form) {
+    // Dedup por CPF: se já existe passageiro com esse CPF na empresa, só seleciona.
+    if (form.cpf) {
+      const { data: existente } = await supabase.from('passageiros')
+        .select('*').eq('empresa_id', perfil.empresa_id).eq('cpf', form.cpf).maybeSingle()
+      if (existente) {
+        if (!isSelected(existente.id) && selecionados.length < qtd) {
+          onChange([...selecionados, existente])
+          if (!todosPassageiros.some(p => p.id === existente.id)) {
+            setTodosPassageiros(prev => [...prev, existente])
+          }
+        }
+        alert(`CPF ja cadastrado como "${existente.nome} ${existente.sobrenome ?? ''}". Selecionei o existente.`)
+        setMostrarModal(false)
+        return
+      }
+    }
     const { data } = await supabase.from('passageiros').insert({
-      empresa_id: perfil.empresa_id,
-      nome: form.nome.toUpperCase(), sobrenome: form.sobrenome.toUpperCase(),
-      cpf: form.cpf || null, contato: form.contato || null,
+      empresa_id:      perfil.empresa_id,
+      nome:            form.nome.toUpperCase(),
+      sobrenome:       form.sobrenome.toUpperCase(),
+      cpf:             form.cpf || null,
+      nascimento:      form.nascimento || null,
+      contato:         form.contato || null,
+      azul_tudoazul:   form.azul_tudoazul   || null,
+      latam_latampass: form.latam_latampass || null,
+      smiles_gol:      form.smiles_gol      || null,
     }).select().single()
     if (data && selecionados.length < qtd) {
       setTodosPassageiros(prev => [...prev, data])

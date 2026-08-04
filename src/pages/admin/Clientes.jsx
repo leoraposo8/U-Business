@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Building2, Users, Plus, ChevronRight, X, Loader2, Mail, Briefcase, Check, AlertCircle, Trash2, Phone, Wallet, Infinity as InfinityIcon, Save, Pencil } from 'lucide-react'
+import { Building2, Users, Plus, ChevronRight, X, Loader2, Mail, Briefcase, Check, AlertCircle, Trash2, Phone, Wallet, Infinity as InfinityIcon, Save, Pencil, CreditCard, Award, Cake } from 'lucide-react'
 
 const PERFIS = [
   { value: 'aprovador_2', label: 'Aprovador nível 2', desc: 'Aprova qualquer valor; escopo da empresa toda' },
@@ -87,39 +87,76 @@ function UsuarioModal({ mode, empresa, obras, usuario, onSalvar, onFechar }) {
     telefone: isEdit ? (usuario?.telefone ?? '') : '',
     perfil:   isEdit ? (usuario?.perfil ?? 'solicitante') : 'solicitante',
   }))
+  // Dados de passageiro (todos vão pra tabela passageiros). CPF é obrigatório;
+  // os demais são opcionais. Em edit + user com passageiro_id, é pré-preenchido.
+  const [pax, setPax] = useState({
+    cpf: '', sobrenome: '', nascimento: '',
+    azul_tudoazul: '', latam_latampass: '', smiles_gol: '',
+  })
   const [limites, setLimites]   = useState(LIMITES_INICIAIS)
   const [obrasSel, setObrasSel] = useState(() => new Set())
-  const [carregando, setCarregando] = useState(isEdit && usuario?.perfil === 'aprovador_1')
+  const [carregando, setCarregando] = useState(isEdit)  // sempre carrega em edit (pax + alcada se N1)
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro]         = useState('')
 
   const isAprovador1 = form.perfil === 'aprovador_1'
   const obrasAtivas  = obras.filter(o => o.ativo !== false)
 
-  // Em edit + aprovador_1, busca limites e obras atuais pra pré-preencher.
+  // Em edit: carrega passageiro (se tiver), limites e obras (se N1).
   useEffect(() => {
-    if (!isEdit || usuario?.perfil !== 'aprovador_1') return
+    if (!isEdit) return
     let cancelou = false
     async function carregar() {
-      const [{ data: lim }, { data: obr }] = await Promise.all([
-        supabase.from('aprovador_limites').select('tipo_item, valor_limite').eq('usuario_id', usuario.id),
-        supabase.from('aprovador_obras').select('obra_id').eq('usuario_id', usuario.id),
-      ])
-      if (cancelou) return
-      // Mapeia linhas do DB de volta ao shape do form.
-      const seed = { ...LIMITES_INICIAIS }
-      for (const row of lim ?? []) {
-        seed[row.tipo_item] = row.valor_limite === null
-          ? { ilimitado: true, valor: '' }
-          : { ilimitado: false, valor: String(row.valor_limite) }
+      const promessas = []
+      // Passageiro
+      promessas.push(
+        usuario?.passageiro_id
+          ? supabase.from('passageiros')
+              .select('cpf, sobrenome, nascimento, azul_tudoazul, latam_latampass, smiles_gol')
+              .eq('id', usuario.passageiro_id).maybeSingle()
+          : Promise.resolve({ data: null })
+      )
+      // Limites e obras só se aprovador_1
+      if (usuario?.perfil === 'aprovador_1') {
+        promessas.push(
+          supabase.from('aprovador_limites').select('tipo_item, valor_limite').eq('usuario_id', usuario.id),
+          supabase.from('aprovador_obras').select('obra_id').eq('usuario_id', usuario.id),
+        )
       }
-      setLimites(seed)
-      setObrasSel(new Set((obr ?? []).map(o => o.obra_id)))
+
+      const results = await Promise.all(promessas)
+      if (cancelou) return
+
+      const paxRow = results[0]?.data
+      if (paxRow) {
+        setPax({
+          cpf:             paxRow.cpf             ?? '',
+          sobrenome:       paxRow.sobrenome       ?? '',
+          nascimento:      paxRow.nascimento      ?? '',
+          azul_tudoazul:   paxRow.azul_tudoazul   ?? '',
+          latam_latampass: paxRow.latam_latampass ?? '',
+          smiles_gol:      paxRow.smiles_gol      ?? '',
+        })
+      }
+
+      if (usuario?.perfil === 'aprovador_1') {
+        const lim = results[1]?.data ?? []
+        const obr = results[2]?.data ?? []
+        const seed = { ...LIMITES_INICIAIS }
+        for (const row of lim) {
+          seed[row.tipo_item] = row.valor_limite === null
+            ? { ilimitado: true, valor: '' }
+            : { ilimitado: false, valor: String(row.valor_limite) }
+        }
+        setLimites(seed)
+        setObrasSel(new Set(obr.map(o => o.obra_id)))
+      }
+
       setCarregando(false)
     }
     carregar()
     return () => { cancelou = true }
-  }, [isEdit, usuario?.id, usuario?.perfil])
+  }, [isEdit, usuario?.id, usuario?.perfil, usuario?.passageiro_id])
 
   function setLimite(tipo, patch) {
     setLimites(prev => ({ ...prev, [tipo]: { ...prev[tipo], ...patch } }))
@@ -137,8 +174,12 @@ function UsuarioModal({ mode, empresa, obras, usuario, onSalvar, onFechar }) {
     const l = limites[t.value]
     return l.ilimitado || (l.valor !== '' && Number(l.valor) >= 0)
   })
-  const podeSalvar = (isEdit || form.email) && form.nome && form.telefone &&
+  const cpfDigits = String(pax.cpf || '').replace(/\D/g, '')
+  const cpfValido = cpfDigits.length === 11
+  const podeSalvar = (isEdit || form.email) && form.nome && form.telefone && cpfValido &&
     (!isAprovador1 || (limitesValidos && obrasSel.size > 0)) && !carregando
+
+  function setPaxField(k, v) { setPax(prev => ({ ...prev, [k]: v })) }
 
   async function salvar() {
     if (!podeSalvar) return
@@ -148,9 +189,15 @@ function UsuarioModal({ mode, empresa, obras, usuario, onSalvar, onFechar }) {
       if (!session) throw new Error('Sessao expirada. Faca login novamente.')
 
       const body = {
-        nome:     form.nome,
-        telefone: form.telefone,
-        perfil:   form.perfil,
+        nome:            form.nome,
+        telefone:        form.telefone,
+        perfil:          form.perfil,
+        cpf:             cpfDigits,
+        sobrenome:       pax.sobrenome || null,
+        nascimento:      pax.nascimento || null,
+        azul_tudoazul:   pax.azul_tudoazul || null,
+        latam_latampass: pax.latam_latampass || null,
+        smiles_gol:      pax.smiles_gol || null,
       }
       if (isEdit) {
         body.user_id = usuario.id
@@ -177,10 +224,16 @@ function UsuarioModal({ mode, empresa, obras, usuario, onSalvar, onFechar }) {
       })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(j.detail || `Erro ${res.status}`)
+
+      if (j.passageiro_existente && j.passageiro_nome_existente) {
+        alert(`CPF ja cadastrado como passageiro "${j.passageiro_nome_existente}". Vinculei ao usuario novo (nenhum dado do passageiro foi alterado). Se for pessoa diferente, corrija o CPF.`)
+      }
+
       onSalvar({
         id: isEdit ? usuario.id : j.user_id,
         email: isEdit ? usuario.email : form.email,
         nome: form.nome, telefone: form.telefone, perfil: form.perfil,
+        passageiro_id: j.passageiro_id ?? usuario?.passageiro_id ?? null,
       })
     } catch (err) { setErro(err.message)
     } finally { setSalvando(false) }
@@ -217,6 +270,51 @@ function UsuarioModal({ mode, empresa, obras, usuario, onSalvar, onFechar }) {
                 </div>
               </label>
             ))}
+          </div>
+        </div>
+
+        {/* ─── Dados de passageiro (aparece pra todos os perfis de empresa cliente) ─── */}
+        <div className="space-y-3 pt-3 border-t" style={{ borderColor: '#F3F4F6' }}>
+          <label className="label flex items-center gap-1.5" style={{ color: '#1A1614' }}>
+            <CreditCard size={13} /> Dados de passageiro
+          </label>
+          <p className="text-xs -mt-2" style={{ color: '#9CA3AF' }}>
+            Todo usuário vira automaticamente um passageiro. Se o CPF já existir
+            como passageiro nesta empresa, apenas vinculamos ao existente.
+          </p>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="label">CPF *</label>
+              <input className="input" placeholder="000.000.000-00" value={pax.cpf}
+                onChange={e => setPaxField('cpf', e.target.value)} />
+              {pax.cpf && !cpfValido && (
+                <p className="text-[10px] mt-1" style={{ color: '#DC2626' }}>CPF deve ter 11 dígitos.</p>
+              )}
+            </div>
+            <div>
+              <label className="label flex items-center gap-1"><Cake size={11} /> Nascimento</label>
+              <input className="input" type="date" value={pax.nascimento || ''}
+                onChange={e => setPaxField('nascimento', e.target.value)} />
+            </div>
+          </div>
+
+          <div>
+            <label className="label">Sobrenome</label>
+            <input className="input" placeholder="(opcional)" value={pax.sobrenome}
+              onChange={e => setPaxField('sobrenome', e.target.value)} />
+          </div>
+
+          <div>
+            <label className="label flex items-center gap-1.5"><Award size={12} /> Programas de fidelidade (opcional)</label>
+            <div className="grid grid-cols-3 gap-2">
+              <input className="input py-1.5 px-2 text-xs" placeholder="TudoAzul"
+                value={pax.azul_tudoazul} onChange={e => setPaxField('azul_tudoazul', e.target.value)} />
+              <input className="input py-1.5 px-2 text-xs" placeholder="LATAM Pass"
+                value={pax.latam_latampass} onChange={e => setPaxField('latam_latampass', e.target.value)} />
+              <input className="input py-1.5 px-2 text-xs" placeholder="Smiles"
+                value={pax.smiles_gol} onChange={e => setPaxField('smiles_gol', e.target.value)} />
+            </div>
           </div>
         </div>
 
@@ -350,7 +448,7 @@ function EmpresaDetalhe({ empresa, onVoltar, onExcluirEmpresa }) {
   useEffect(() => {
     async function load() {
       const [{ data: u }, { data: c }] = await Promise.all([
-        supabase.from('perfis').select('id, nome, telefone, perfil, ativo').eq('empresa_id', empresa.id).order('nome'),
+        supabase.from('perfis').select('id, nome, telefone, perfil, ativo, passageiro_id').eq('empresa_id', empresa.id).order('nome'),
         supabase.from('obras').select('id, nome, codigo, ativo').eq('empresa_id', empresa.id).order('nome'),
       ])
       setUsuarios(u ?? []); setCentros(c ?? []); setLoading(false)

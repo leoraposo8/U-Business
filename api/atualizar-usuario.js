@@ -1,13 +1,25 @@
 // POST /api/atualizar-usuario
-// Body: { user_id, nome, telefone, perfil, limites?, obras? }
-//   - Só admin_agencia pode chamar (agência centraliza cadastros).
-//   - Não permite trocar email (isso é operação do Auth; se precisar, delete e recrie).
-//   - perfil ∈ { admin_agencia, agente, aprovador_1, aprovador_2, solicitante }
-//   - Se perfil = aprovador_1: limites + obras obrigatórios (mesma validação
-//     do convite). Se perfil != aprovador_1: apaga eventuais linhas antigas
-//     em aprovador_limites e aprovador_obras (usuário mudou de nível/tipo).
+// Body: {
+//   user_id, nome, telefone, perfil,
+//   cpf?, sobrenome?, nascimento?,
+//   azul_tudoazul?, latam_latampass?, smiles_gol?,
+//   limites?, obras?
+// }
 //
-// Envs necessárias no Vercel: SUPABASE_SERVICE_ROLE_KEY, (VITE_)SUPABASE_URL
+// - Só admin_agencia pode chamar.
+// - Não permite trocar email (operação do Auth; delete e recrie se precisar).
+// - Se perfil = aprovador_1: limites + obras obrigatórios. Se != aprovador_1:
+//   apaga eventuais linhas antigas em aprovador_limites e aprovador_obras.
+//
+// Passageiro:
+//   - Se cpf vier no payload:
+//       (a) User já tem passageiro_id → atualiza os campos desse passageiro
+//           (cpf, nome, sobrenome, contato, nascimento, milhas).
+//       (b) User NÃO tem passageiro_id → lookup por (empresa_id, cpf).
+//           Se acha, vincula. Se não acha, cria novo + vincula.
+//   - Se cpf NÃO vier: não mexe em passageiro nenhum.
+//
+// Envs: SUPABASE_SERVICE_ROLE_KEY, (VITE_)SUPABASE_URL
 
 import { createClient } from '@supabase/supabase-js'
 
@@ -18,6 +30,12 @@ const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 const PERFIS_VALIDOS = ['admin_agencia', 'agente', 'aprovador_1', 'aprovador_2', 'solicitante']
 const TIPOS_ITEM     = ['aereo', 'rodoviario', 'hospedagem']
+
+function normalizaCpf(cpf) {
+  if (!cpf) return null
+  const digits = String(cpf).replace(/\D/g, '')
+  return digits.length ? digits : null
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).end(); return }
@@ -48,7 +66,12 @@ export default async function handler(req, res) {
 
   // ─── VALIDAÇÃO DO BODY ───────────────────────────────────────────────────
   const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {})
-  const { user_id, nome, telefone, perfil, limites, obras } = body
+  const {
+    user_id, nome, telefone, perfil,
+    cpf: cpfRaw, sobrenome, nascimento,
+    azul_tudoazul, latam_latampass, smiles_gol,
+    limites, obras,
+  } = body
 
   if (!user_id || !nome || !telefone || !perfil) {
     res.status(400).json({ detail: 'user_id, nome, telefone e perfil sao obrigatorios' }); return
@@ -57,10 +80,14 @@ export default async function handler(req, res) {
     res.status(400).json({ detail: `perfil invalido (valores aceitos: ${PERFIS_VALIDOS.join(', ')})` }); return
   }
 
-  // Carrega o usuário-alvo pra pegar empresa_id (obrigatório na validação de
-  // obras) e pra confirmar que existe.
+  const cpf = normalizaCpf(cpfRaw)
+  if (cpf && cpf.length !== 11) {
+    res.status(400).json({ detail: 'cpf deve ter 11 digitos' }); return
+  }
+
+  // Carrega o usuário-alvo (empresa_id + passageiro_id atual).
   const { data: alvo, error: alvoErr } = await admin
-    .from('perfis').select('id, empresa_id').eq('id', user_id).single()
+    .from('perfis').select('id, empresa_id, passageiro_id').eq('id', user_id).single()
   if (alvoErr || !alvo) { res.status(404).json({ detail: 'Usuario nao encontrado' }); return }
 
   // ─── VALIDAÇÃO ESPECÍFICA DE APROVADOR_1 ─────────────────────────────────
@@ -101,23 +128,62 @@ export default async function handler(req, res) {
   }
 
   // ─── ATUALIZAÇÃO ─────────────────────────────────────────────────────────
-  // Não há transação atômica via supabase-js; a estratégia é: atualiza perfis
-  // primeiro, depois sincroniza tabelas dependentes. Se dependentes falharem
-  // o perfis já foi atualizado — aceitável pq os dados divergentes não geram
-  // dano (roteamento trata "sem linha" como bloqueado, escala pro N2).
   try {
+    let passageiroIdFinal = alvo.passageiro_id
+
+    // 1. Sincronia passageiro (só se cpf veio no payload)
+    if (cpf && alvo.empresa_id) {
+      const camposPassageiro = {
+        nome,
+        sobrenome:       sobrenome        ?? null,
+        cpf,
+        nascimento:      nascimento       || null,
+        contato:         telefone,
+        azul_tudoazul:   azul_tudoazul    || null,
+        latam_latampass: latam_latampass  || null,
+        smiles_gol:      smiles_gol       || null,
+      }
+
+      if (alvo.passageiro_id) {
+        // (a) Atualiza o passageiro já linkado.
+        const { error: paxUpdErr } = await admin.from('passageiros')
+          .update(camposPassageiro).eq('id', alvo.passageiro_id)
+        if (paxUpdErr) throw paxUpdErr
+        passageiroIdFinal = alvo.passageiro_id
+      } else {
+        // (b) User sem passageiro — lookup por CPF na empresa.
+        const { data: existente, error: paxErr } = await admin
+          .from('passageiros').select('id')
+          .eq('empresa_id', alvo.empresa_id).eq('cpf', cpf)
+          .maybeSingle()
+        if (paxErr) throw paxErr
+
+        if (existente) {
+          passageiroIdFinal = existente.id
+        } else {
+          const { data: novoPax, error: paxInsErr } = await admin.from('passageiros').insert({
+            empresa_id: alvo.empresa_id, ...camposPassageiro,
+          }).select('id').single()
+          if (paxInsErr) throw paxInsErr
+          passageiroIdFinal = novoPax.id
+        }
+      }
+    }
+
+    // 2. Atualiza perfil (com passageiro_id se mudou).
+    const perfilUpdate = { nome, telefone, perfil }
+    if (passageiroIdFinal !== alvo.passageiro_id) {
+      perfilUpdate.passageiro_id = passageiroIdFinal
+    }
     const { error: updErr } = await admin.from('perfis')
-      .update({ nome, telefone, perfil }).eq('id', user_id)
+      .update(perfilUpdate).eq('id', user_id)
     if (updErr) throw updErr
 
-    // Se saiu de aprovador_1 (ou nunca foi, mas idempotente): limpa vínculos.
+    // 3. Sincronia alçadas / obras.
     if (perfil !== 'aprovador_1') {
       await admin.from('aprovador_limites').delete().eq('usuario_id', user_id)
       await admin.from('aprovador_obras').delete().eq('usuario_id', user_id)
     } else {
-      // Sincroniza limites (delete + insert é mais simples que upsert por PK
-      // composta quando o conjunto de tipo_item pode variar — aqui é sempre
-      // os 3, mas mantenho o padrão pra ser trivial de estender).
       const { error: delLimErr } = await admin.from('aprovador_limites').delete().eq('usuario_id', user_id)
       if (delLimErr) throw delLimErr
       const { error: insLimErr } = await admin.from('aprovador_limites').insert(
@@ -133,7 +199,10 @@ export default async function handler(req, res) {
       if (insObrErr) throw insObrErr
     }
 
-    res.status(200).json({ ok: true, user_id, nome, telefone, perfil })
+    res.status(200).json({
+      ok: true, user_id, nome, telefone, perfil,
+      passageiro_id: passageiroIdFinal,
+    })
   } catch (err) {
     console.error('[atualizar-usuario] erro:', err)
     res.status(500).json({ detail: err.message || 'Falha ao atualizar usuario' })
