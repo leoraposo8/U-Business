@@ -138,7 +138,7 @@ export default function FilaOpcoes() {
 
   useEffect(() => {
     const SELECT = `
-      id, tipo, status, origem, destino, data_ida, data_volta,
+      id, tipo, status, empresa_id, obra_id, origem, destino, data_ida, data_volta,
       cidade, checkin, checkout, observacoes, bagagem, created_at,
       passageiros(nome, sobrenome),
       obras(nome),
@@ -261,6 +261,34 @@ export default function FilaOpcoes() {
     }))
   }
 
+  // Fase 3.2 — Roteamento inicial: dado (empresa_id, obra_id) da demanda,
+  // resolve qual aprovador recebe. Prioridade:
+  //   1. Se a obra tem aprovador_1 vinculado (via aprovador_obras + perfis ativos)
+  //      → pega o primeiro por ordem de nome (determinístico).
+  //   2. Senão → pega o aprovador_2 ativo da empresa (primeiro por nome).
+  //   3. Se nem N2 existir → retorna null (agente vê erro claro e não envia).
+  async function resolverAprovador(demanda) {
+    if (demanda.obra_id) {
+      const { data: n1s } = await supabase
+        .from('aprovador_obras')
+        .select('usuario_id, perfis!inner(id, nome, perfil, ativo)')
+        .eq('obra_id', demanda.obra_id)
+        .eq('perfis.perfil', 'aprovador_1')
+        .eq('perfis.ativo', true)
+        .order('nome', { referencedTable: 'perfis', ascending: true })
+      if (n1s && n1s.length > 0) return n1s[0].usuario_id
+    }
+    const { data: n2s } = await supabase
+      .from('perfis')
+      .select('id')
+      .eq('empresa_id', demanda.empresa_id)
+      .eq('perfil', 'aprovador_2')
+      .eq('ativo', true)
+      .order('nome', { ascending: true })
+      .limit(1)
+    return n2s?.[0]?.id ?? null
+  }
+
   async function enviarOpcoes() {
     if (!demandaAtiva) return
     const isPosvenda = demandaAtiva.tipo === 'posvenda'
@@ -277,7 +305,7 @@ export default function FilaOpcoes() {
       const inserir = await montarPayload(validas)
 
       if (editando) {
-        // Revisão: substitui as opções existentes; status permanece aguardando_aprovacao
+        // Revisão: substitui as opções existentes; status/aprovador permanecem
         await supabase.from('opcoes').delete().eq('demanda_id', demandaAtiva.id)
         await supabase.from('opcoes').insert(inserir)
         await supabase.from('demanda_historico').insert({
@@ -287,8 +315,24 @@ export default function FilaOpcoes() {
         // Volta pra tela de detalhe da demanda revisada
         navigate(`/app/demandas/${demandaAtiva.id}`)
       } else {
+        // Primeiro envio: roteia pro aprovador certo antes de mudar status.
+        const aprovadorId = await resolverAprovador(demandaAtiva)
+        if (!aprovadorId) {
+          alert(
+            'Nao foi possivel enviar as opcoes: esta empresa nao tem Aprovador Nivel 2 cadastrado ' +
+            'e o centro de custo desta demanda nao tem Aprovador Nivel 1 vinculado. ' +
+            'Cadastre pelo menos um aprovador antes de enviar.'
+          )
+          setEnviando(false)
+          return
+        }
+
         await supabase.from('opcoes').insert(inserir)
-        await supabase.from('demandas').update({ status: 'aguardando_aprovacao', agente_id: perfil.id }).eq('id', demandaAtiva.id)
+        await supabase.from('demandas').update({
+          status: 'aguardando_aprovacao',
+          agente_id: perfil.id,
+          aprovador_id: aprovadorId,
+        }).eq('id', demandaAtiva.id)
         await supabase.from('demanda_historico').insert({
           demanda_id: demandaAtiva.id, status_anterior: 'aguardando_opcoes',
           status_novo: 'aguardando_aprovacao', usuario_id: perfil.id,
