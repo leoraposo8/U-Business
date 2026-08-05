@@ -54,6 +54,11 @@ function NovaEmpresaModal({ onSalvar, onFechar }) {
     if (!form.nome) return
     setSalvando(true)
     const { data, error } = await supabase.from('empresas').insert({ nome: form.nome, cnpj: form.cnpj || null }).select().single()
+    // Cria CC "Viagens" padrão junto com a empresa — garante que toda empresa
+    // sempre tem pelo menos 1 CC. Se ela usar divisão, cria outros depois.
+    if (!error && data) {
+      await supabase.from('obras').insert({ empresa_id: data.id, nome: 'Viagens', ativo: true })
+    }
     setSalvando(false)
     if (!error) onSalvar(data)
   }
@@ -176,6 +181,8 @@ function UsuarioModal({ mode, empresa, obras, usuario, onSalvar, onFechar }) {
   })
   const cpfDigits = String(pax.cpf || '').replace(/\D/g, '')
   const cpfValido = cpfDigits.length === 11
+  // Aprovador N1: alçadas obrigatórias E pelo menos 1 obra vinculada.
+  // (Empresas sem divisão de CC devem ter o CC "Viagens" padrão criado com a empresa.)
   const podeSalvar = (isEdit || form.email) && form.nome && form.telefone && cpfValido &&
     (!isAprovador1 || (limitesValidos && obrasSel.size > 0)) && !carregando
 

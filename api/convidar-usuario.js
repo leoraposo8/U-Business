@@ -117,7 +117,7 @@ export default async function handler(req, res) {
     } catch (e) { res.status(400).json({ detail: e.message }); return }
 
     if (!Array.isArray(obras) || obras.length === 0) {
-      res.status(400).json({ detail: 'obras deve ser um array nao vazio de uuids' }); return
+      res.status(400).json({ detail: 'obras deve ser um array nao vazio de uuids (pelo menos 1 CC)' }); return
     }
     const { data: obrasCheck, error: obrasErr } = await admin
       .from('obras').select('id').in('id', obras).eq('empresa_id', empresa_id)

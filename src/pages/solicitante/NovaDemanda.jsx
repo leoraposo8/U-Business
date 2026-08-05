@@ -584,6 +584,7 @@ export default function NovaDemanda() {
   const canSubmit = (() => {
     if (!perfil?.empresa_id && !empresaIdSel) return false
     if (!tipo) return false
+    if (!form.obra_id) return false  // CC é obrigatório em toda demanda (roteia aprovador)
     if (tipo === 'posvenda') return !!form.localizador_ref && !!form.posvenda_tipo
     if (tipo === 'hospedagem') return paxOk && !!(form.cidade && form.checkin && form.checkout)
     if (tipo === 'pacote') return selecionados.length > 0 && Object.values(pacoteTipos).some(Boolean)
@@ -682,16 +683,21 @@ export default function NovaDemanda() {
               </div>
             )}
 
-            {/* Centro de custo */}
-            {obras.length > 0 && (
-              <div>
-                <label className="label">Centro de custo <span className="text-gray-400 font-normal">(opcional)</span></label>
+            {/* Centro de custo — obrigatório (define quem aprova) */}
+            <div>
+              <label className="label">Centro de custo *</label>
+              {obras.length === 0 ? (
+                <div className="flex gap-2 text-sm p-3 rounded-lg" style={{ background: '#FEF2F2', color: '#DC2626' }}>
+                  <span>⚠</span>
+                  <span>Esta empresa não tem centro de custo cadastrado. Peça pra U Business criar antes de abrir demandas.</span>
+                </div>
+              ) : (
                 <select className="input" value={form.obra_id} onChange={e => set('obra_id', e.target.value)}>
-                  <option value="">Nenhum</option>
+                  <option value="">Selecione um centro de custo</option>
                   {obras.map(o => <option key={o.id} value={o.id}>{o.codigo ? `[${o.codigo}] ` : ''}{o.nome}</option>)}
                 </select>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* AÉREO */}
             {tipo === 'aereo' && (
