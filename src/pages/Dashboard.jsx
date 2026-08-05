@@ -24,16 +24,24 @@ function StatCard({ label, value, icon: Icon, color, onClick }) {
 }
 
 export default function Dashboard() {
-  const { perfil, isAgencia } = useAuth()
+  const { perfil, isAgencia, isAprovador1, isAprovador2 } = useAuth()
   const navigate = useNavigate()
   const [counts, setCounts] = useState({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function load() {
-      const { data } = await supabase
-        .from('demandas')
-        .select('status')
+      let q = supabase.from('demandas').select('status')
+      // Filtro por role (igual ao ListaDemandas):
+      //   admin_agencia/agente → tudo; aprovador → dele ou solicitadas por ele; solicitante → só as suas.
+      if (perfil?.id && !isAgencia) {
+        if (isAprovador1 || isAprovador2) {
+          q = q.or(`aprovador_id.eq.${perfil.id},solicitante_id.eq.${perfil.id}`)
+        } else {
+          q = q.eq('solicitante_id', perfil.id)
+        }
+      }
+      const { data } = await q
       if (data) {
         const c = {}
         data.forEach(d => { c[d.status] = (c[d.status] ?? 0) + 1 })
@@ -42,7 +50,7 @@ export default function Dashboard() {
       setLoading(false)
     }
     load()
-  }, [])
+  }, [perfil?.id, isAgencia, isAprovador1, isAprovador2])
 
   const stats = isAgencia
     ? [

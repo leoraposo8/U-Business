@@ -426,15 +426,18 @@ export default function DetalheDemanda() {
   if (!demanda) return <div className="p-8 text-gray-500">Demanda não encontrada.</div>
 
   const pax = demanda.passageiros
-  // Aprovação: N1 age em aguardando_aprovacao (aprova → sistema decide se
-  // finaliza ou escala pra N2). N2 (e admin_agencia) age em aguardando_aprovacao_2.
-  // N2 tb pode aprovar aguardando_aprovacao (empresas com só 1 nivel).
+  // Aprovação (Fase 3.3): só aparece pro aprovador designado da demanda
+  // (`demanda.aprovador_id`) — o roteamento inicial da 3.2 já garante que
+  // esse id aponta pro N1 do CC, ou N2 quando o CC não tem N1 vinculado, ou
+  // o N2 quando escalado. Admin_agencia continua podendo aprovar tudo por
+  // convenção (fallback operacional).
+  const souAprovadorDaDemanda = perfil?.id && demanda.aprovador_id === perfil.id
   const podAprovar =
-    (demanda.status === 'aguardando_aprovacao'   && isAprovador) ||
-    (demanda.status === 'aguardando_aprovacao_2' && (isAprovador2 || isAgencia))
+    (demanda.status === 'aguardando_aprovacao'   && (souAprovadorDaDemanda || isAgencia)) ||
+    (demanda.status === 'aguardando_aprovacao_2' && (souAprovadorDaDemanda || isAgencia))
   const podeRevisarOpcoes = isAgencia && (demanda.status === 'aguardando_aprovacao' || demanda.status === 'aguardando_aprovacao_2')
   const podeExcluir = demanda.status === 'aguardando_opcoes' && (perfil?.id === demanda.solicitante_id || isAprovador)
-  const podeDesaprovar = isAprovador && demanda.status === 'aprovado' && demanda.status !== 'emitido'
+  const podeDesaprovar = (souAprovadorDaDemanda || isAgencia) && demanda.status === 'aprovado' && demanda.status !== 'emitido'
 
   const tsOpcoes   = historico.find(h => h.status_novo === 'aguardando_aprovacao')?.created_at
   const tsAprovado = historico.find(h => h.status_novo === 'aprovado')?.created_at

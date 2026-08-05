@@ -56,7 +56,7 @@ function PaxCell({ demanda_passageiros: dp, passageiro }) {
 }
 
 export default function ListaDemandas() {
-  const { isAgencia } = useAuth()
+  const { perfil, isAgencia, isAprovador1, isAprovador2 } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [demandas, setDemandas] = useState([])
@@ -78,6 +78,19 @@ export default function ListaDemandas() {
         perfis!solicitante_id(nome)
       `).order('created_at', { ascending: false })
       if (filtroStatus) q = q.eq('status', filtroStatus)
+
+      // Fase 3.3 — Filtro por role no client (RLS ainda protege multi-tenant):
+      //   - admin_agencia / agente: veem tudo
+      //   - aprovador (N1 ou N2): só demandas onde é aprovador OU solicitante
+      //   - solicitante: só as suas
+      if (perfil?.id && !isAgencia) {
+        if (isAprovador1 || isAprovador2) {
+          q = q.or(`aprovador_id.eq.${perfil.id},solicitante_id.eq.${perfil.id}`)
+        } else {
+          q = q.eq('solicitante_id', perfil.id)
+        }
+      }
+
       const { data } = await q
       const demList = data ?? []
 
@@ -107,7 +120,7 @@ export default function ListaDemandas() {
       setLoading(false)
     }
     load()
-  }, [filtroStatus])
+  }, [filtroStatus, perfil?.id, isAgencia, isAprovador1, isAprovador2])
 
   const filtradas = demandas.filter(d => {
     if (!busca) return true
