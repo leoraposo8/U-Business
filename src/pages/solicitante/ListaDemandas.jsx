@@ -134,41 +134,76 @@ export default function ListaDemandas() {
   })
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold" style={{ color: '#1A1614' }}>Solicitações</h1>
-          <p className="text-sm mt-1" style={{ color: '#6B7280' }}>{filtradas.length} resultado{filtradas.length !== 1 ? 's' : ''}</p>
+    <div className="p-4 md:p-8">
+      <div className="flex items-center justify-between mb-6 gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl md:text-2xl font-bold" style={{ color: '#1A1614' }}>Solicitações</h1>
+          <p className="text-xs md:text-sm mt-1" style={{ color: '#6B7280' }}>{filtradas.length} resultado{filtradas.length !== 1 ? 's' : ''}</p>
         </div>
-        <button onClick={() => navigate('/app/nova-demanda')} className="btn-primary">
-          <PlusCircle size={16} /> Nova solicitação
+        <button onClick={() => navigate('/app/nova-demanda')} className="btn-primary flex-shrink-0">
+          <PlusCircle size={16} /> <span className="hidden sm:inline">Nova solicitação</span><span className="sm:hidden">Nova</span>
         </button>
       </div>
 
-      <div className="flex gap-3 mb-6">
-        <div className="relative flex-1 max-w-xs">
+      <div className="flex flex-col sm:flex-row gap-3 mb-6">
+        <div className="relative flex-1 sm:max-w-xs">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input className="input pl-9" placeholder="Buscar rota, cidade..."
             value={busca} onChange={e => setBusca(e.target.value)} />
         </div>
-        <select className="input max-w-xs" value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)}>
+        <select className="input sm:max-w-xs" value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)}>
           {STATUS_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       </div>
 
-      <div className="card overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 size={24} className="animate-spin text-gray-300" />
+      {loading ? (
+        <div className="card flex items-center justify-center py-16">
+          <Loader2 size={24} className="animate-spin text-gray-300" />
+        </div>
+      ) : filtradas.length === 0 ? (
+        <div className="card py-16 text-center">
+          <p className="text-sm text-gray-400">Nenhuma solicitação encontrada.</p>
+          <button onClick={() => navigate('/app/nova-demanda')} className="btn-primary mt-4">
+            <PlusCircle size={15} /> Criar primeira solicitação
+          </button>
+        </div>
+      ) : (
+        <>
+          {/* MOBILE: cards */}
+          <div className="md:hidden space-y-3">
+            {filtradas.map(d => {
+              const paxN = (d.demanda_passageiros ?? []).filter(r => r.passageiros).length || (d.passageiros ? 1 : 0)
+              const detalhe = d.tipo === 'hospedagem' ? d.cidade
+                : d.tipo === 'posvenda' ? 'Pós-venda'
+                : `${d.origem ?? '—'} → ${d.destino ?? '—'}`
+              const paxNome = d.passageiros ? `${d.passageiros.nome ?? ''} ${d.passageiros.sobrenome ?? ''}`.trim() : '—'
+              return (
+                <button key={d.id} onClick={() => navigate(`/app/demandas/${d.id}`)}
+                  className="card p-4 w-full text-left hover:shadow-md transition-shadow">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold truncate" style={{ color: '#1A1614' }}>{paxNome}</p>
+                      {paxN > 1 && <p className="text-[11px]" style={{ color: '#9CA3AF' }}>+{paxN - 1} passageiro{paxN > 2 ? 's' : ''}</p>}
+                    </div>
+                    <StatusBadge status={d.status} />
+                  </div>
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
+                    <TipoBadge tipo={d.tipo} />
+                    <span className="text-sm" style={{ color: '#1A1614' }}>{detalhe}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] pt-2 border-t" style={{ borderColor: '#F3F4F6', color: '#9CA3AF' }}>
+                    <span>Solicitado {fmtTs(d.created_at)}</span>
+                    {isAgencia && d.empresas?.nome && (
+                      <span className="font-medium truncate ml-2" style={{ color: '#6B7280' }}>{d.empresas.nome}</span>
+                    )}
+                  </div>
+                </button>
+              )
+            })}
           </div>
-        ) : filtradas.length === 0 ? (
-          <div className="py-16 text-center">
-            <p className="text-sm text-gray-400">Nenhuma solicitação encontrada.</p>
-            <button onClick={() => navigate('/app/nova-demanda')} className="btn-primary mt-4">
-              <PlusCircle size={15} /> Criar primeira solicitação
-            </button>
-          </div>
-        ) : (
+
+          {/* DESKTOP: tabela */}
+          <div className="hidden md:block card overflow-hidden">
           <table className="w-full">
             <thead>
               <tr style={{ borderBottom: '1px solid #E5E7EB' }}>
@@ -235,8 +270,9 @@ export default function ListaDemandas() {
               ))}
             </tbody>
           </table>
-        )}
-      </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }
