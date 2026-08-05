@@ -1,5 +1,4 @@
 import { useState, useMemo, useRef } from 'react'
-import { parcelasSemJuros, buscarCia } from '../../lib/parcelamento'
 import {
   Plane, Ticket, Sparkles, Plus, X, Trash2, FileDown, Loader2,
   Wand2, Info, ChevronDown, ChevronUp, Layers
@@ -472,12 +471,6 @@ function Trechos({ o, onChange }) {
 }
 
 function FormRF({ o, onChange, onCliente }) {
-  const parcelas = useMemo(() => {
-    if (!o.cia) return null
-    return parcelasSemJuros(o.cia, { origemBrasil: o.origem_brasil, ndc: o.ndc, fidelidade: o.fidelidade, nacional: o.nacional })
-  }, [o.cia, o.origem_brasil, o.ndc, o.fidelidade, o.nacional])
-  const cia = o.cia ? buscarCia(o.cia) : null
-
   return (
     <>
       <div className="mb-3">
@@ -507,13 +500,9 @@ function FormRF({ o, onChange, onCliente }) {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
         <div>
-          <label className="label">Companhia (parcelamento)</label>
-          <input className="input" placeholder="LATAM / LA" value={o.cia} onChange={e => onChange({ cia: e.target.value })} />
-          {o.cia && (
-            <p className="text-xs mt-1" style={{ color: cia ? '#15803D' : '#B91C1C' }}>
-              {cia ? `${cia.nome} · Cartão ${parcelas}x sem juros` : 'Companhia não encontrada na tabela'}
-            </p>
-          )}
+          <label className="label">Parcelamento</label>
+          <input className="input" placeholder="Ex: 10x sem juros / à vista"
+            value={o.cia} onChange={e => onChange({ cia: e.target.value })} />
         </div>
         <div>
           <label className="label">Bagagem</label>
@@ -692,10 +681,6 @@ function EmissaoEditor({ e, idx, onChange, onDel, canDel, onCliente }) {
 }
 
 function CamposRF({ e, onChange }) {
-  const parcelas = useMemo(() => e.cia
-    ? parcelasSemJuros(e.cia, { origemBrasil: e.origem_brasil, ndc: e.ndc, fidelidade: e.fidelidade, nacional: e.nacional })
-    : null, [e.cia, e.origem_brasil, e.ndc, e.fidelidade, e.nacional])
-  const cia = e.cia ? buscarCia(e.cia) : null
   return (
     <>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
@@ -705,13 +690,9 @@ function CamposRF({ e, onChange }) {
         <div><label className="label">Câmbio</label><input className="input" placeholder="5,40" value={e.cambio} onChange={ev => onChange({ cambio: ev.target.value })} /></div>
       </div>
       <div className="mt-2">
-        <label className="label">Companhia (parcelamento)</label>
-        <input className="input" placeholder="LATAM / LA" value={e.cia} onChange={ev => onChange({ cia: ev.target.value })} />
-        {e.cia && (
-          <p className="text-xs mt-1" style={{ color: cia ? '#15803D' : '#B91C1C' }}>
-            {cia ? `${cia.nome} · Cartão ${parcelas}x sem juros` : 'Companhia não encontrada'}
-          </p>
-        )}
+        <label className="label">Parcelamento</label>
+        <input className="input" placeholder="Ex: 10x sem juros / à vista"
+          value={e.cia} onChange={ev => onChange({ cia: ev.target.value })} />
       </div>
       <div className="flex flex-wrap gap-3 mt-2 text-sm">
         {[['origem_brasil', 'Origem Brasil'], ['ndc', 'NDC'], ['fidelidade', 'Fidelidade'], ['nacional', 'Nacional']].map(([k, l]) => (
