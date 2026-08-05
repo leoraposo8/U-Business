@@ -185,6 +185,9 @@ export default function NovaProposta() {
   const [saudacaoNome, setSaudacaoNome] = useState('')
   const [genero, setGenero] = useState('M')
   const [periodo, setPeriodo] = useState('boa tarde')
+  const [qtdAdt, setQtdAdt] = useState(1)
+  const [qtdChd, setQtdChd] = useState(0)
+  const [qtdInf, setQtdInf] = useState(0)
   const [comando, setComando] = useState('')
   const [opcoes, setOpcoes] = useState([opcaoVazia('rf')])
 
@@ -194,10 +197,15 @@ export default function NovaProposta() {
   const nomeSaud = saudacaoNome || cliente.trim().split(' ')[0] || ''
 
   function aplicarClienteDoPrint(campos) {
-    if (campos && campos.cliente && !cliente.trim()) {
+    if (!campos) return
+    if (campos.cliente && !cliente.trim()) {
       setCliente(campos.cliente)
       if (campos.genero === 'F' || campos.genero === 'M') setGenero(campos.genero)
     }
+    // Quantidade de pax (extraida do print). So sobrescreve se veio algo > 0.
+    const adt = Number(campos.qtd_adt); if (Number.isFinite(adt) && adt > 0) setQtdAdt(adt)
+    const chd = Number(campos.qtd_chd); if (Number.isFinite(chd) && chd >= 0) setQtdChd(chd)
+    const inf = Number(campos.qtd_inf); if (Number.isFinite(inf) && inf >= 0) setQtdInf(inf)
   }
 
   function setOpcao(id, patch) {
@@ -258,6 +266,7 @@ export default function NovaProposta() {
     setLoading(true); setErro('')
     const payload = {
       cliente: cliente.trim(), saudacao_nome: nomeSaud, genero, saudacao_periodo: periodo,
+      qtd_adt: Number(qtdAdt) || 1, qtd_chd: Number(qtdChd) || 0, qtd_inf: Number(qtdInf) || 0,
       saida: `Proposta ${cliente.trim()}.pdf`, opcoes: opcoes.map(toApi),
       ...(comando.trim() ? { comando: comando.trim() } : {}),
     }
@@ -323,6 +332,27 @@ export default function NovaProposta() {
                   {l}
                 </button>
               ))}
+            </div>
+          </div>
+          {/* Passageiros: qtd por faixa etaria — auto-preenchido pelo print quando possivel */}
+          <div className="sm:col-span-2">
+            <label className="label">Passageiros</label>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <input className="input" type="number" min="0" placeholder="Adultos"
+                  value={qtdAdt} onChange={e => setQtdAdt(e.target.value)} />
+                <p className="text-[10px] mt-1 text-slate-400 text-center">Adultos</p>
+              </div>
+              <div>
+                <input className="input" type="number" min="0" placeholder="Crianças"
+                  value={qtdChd} onChange={e => setQtdChd(e.target.value)} />
+                <p className="text-[10px] mt-1 text-slate-400 text-center">Crianças (2-11)</p>
+              </div>
+              <div>
+                <input className="input" type="number" min="0" placeholder="Bebês"
+                  value={qtdInf} onChange={e => setQtdInf(e.target.value)} />
+                <p className="text-[10px] mt-1 text-slate-400 text-center">Bebês (0-2)</p>
+              </div>
             </div>
           </div>
         </div>
