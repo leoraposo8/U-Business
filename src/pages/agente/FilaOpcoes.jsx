@@ -6,6 +6,7 @@ import StatusBadge from '../../components/ui/StatusBadge'
 import TipoBadge from '../../components/ui/TipoBadge'
 import { Loader2, Send, Plus, X, Image, MapPin, Calendar, MessageSquare } from 'lucide-react'
 import { fmtTs, fmtData, fmtDataCurta } from '../../lib/datetime'
+import { resolverAprovador } from '../../lib/aprovador'
 
 // fmt -> use fmtData from lib/datetime
 
@@ -261,34 +262,6 @@ export default function FilaOpcoes() {
     }))
   }
 
-  // Fase 3.2 — Roteamento inicial: dado (empresa_id, obra_id) da demanda,
-  // resolve qual aprovador recebe. Prioridade:
-  //   1. Se a obra tem aprovador_1 vinculado (via aprovador_obras + perfis ativos)
-  //      → pega o primeiro por ordem de nome (determinístico).
-  //   2. Senão → pega o aprovador_2 ativo da empresa (primeiro por nome).
-  //   3. Se nem N2 existir → retorna null (agente vê erro claro e não envia).
-  async function resolverAprovador(demanda) {
-    if (demanda.obra_id) {
-      const { data: n1s } = await supabase
-        .from('aprovador_obras')
-        .select('usuario_id, perfis!inner(id, nome, perfil, ativo)')
-        .eq('obra_id', demanda.obra_id)
-        .eq('perfis.perfil', 'aprovador_1')
-        .eq('perfis.ativo', true)
-        .order('nome', { referencedTable: 'perfis', ascending: true })
-      if (n1s && n1s.length > 0) return n1s[0].usuario_id
-    }
-    const { data: n2s } = await supabase
-      .from('perfis')
-      .select('id')
-      .eq('empresa_id', demanda.empresa_id)
-      .eq('perfil', 'aprovador_2')
-      .eq('ativo', true)
-      .order('nome', { ascending: true })
-      .limit(1)
-    return n2s?.[0]?.id ?? null
-  }
-
   async function enviarOpcoes() {
     if (!demandaAtiva) return
     const isPosvenda = demandaAtiva.tipo === 'posvenda'
@@ -315,12 +288,19 @@ export default function FilaOpcoes() {
         // Volta pra tela de detalhe da demanda revisada
         navigate(`/app/demandas/${demandaAtiva.id}`)
       } else {
-        // Primeiro envio: roteia pro aprovador certo antes de mudar status.
-        const aprovadorId = await resolverAprovador(demandaAtiva)
+        // Primeiro envio: se aprovador_id ainda não foi setado (demanda criada
+        // antes da 3.3.1 ou fluxo especial), roteia agora. Se já tem, mantém.
+        let aprovadorId = demandaAtiva.aprovador_id
+        if (!aprovadorId) {
+          const r = await resolverAprovador(supabase, {
+            empresaId: demandaAtiva.empresa_id, obraId: demandaAtiva.obra_id,
+          })
+          aprovadorId = r.aprovadorId
+        }
         if (!aprovadorId) {
           alert(
             'Nao foi possivel enviar as opcoes: esta empresa nao tem Aprovador Nivel 2 cadastrado ' +
-            'e o centro de custo desta demanda nao tem Aprovador Nivel 1 vinculado. ' +
+            'e nao ha Aprovador Nivel 1 disponivel (nem vinculado ao centro de custo, nem global). ' +
             'Cadastre pelo menos um aprovador antes de enviar.'
           )
           setEnviando(false)

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { resolverAprovador } from '../../lib/aprovador'
 import {
   Plane, Bus, Hotel, Package, Headphones,
   Loader2, ChevronLeft, Send, X, Search, UserPlus, Calendar, Minus, Plus
@@ -455,11 +456,20 @@ export default function NovaDemanda() {
     setSalvando(true)
     try {
       const empresaFinal = perfil.empresa_id || empresaIdSel
+
+      // Fase 3.3.1 — Roteia o aprovador já na criação, pra ele ver a demanda
+      // desde `aguardando_opcoes` (não precisa esperar agente enviar opções).
+      // Todas as demandas deste submit têm mesma empresa/obra, então resolvemos 1x.
+      const { aprovadorId: aprovadorInicial } = await resolverAprovador(supabase, {
+        empresaId: empresaFinal, obraId: form.obra_id || null,
+      })
+
       const base = {
         empresa_id: empresaFinal,
         solicitante_id: perfil.id,
         status: 'aguardando_opcoes',
         obra_id: form.obra_id || null,
+        aprovador_id: aprovadorInicial,  // pode ser null se empresa sem aprovador cadastrado
       }
 
       let demandas = []
