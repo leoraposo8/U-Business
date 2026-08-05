@@ -92,10 +92,11 @@ function UsuarioModal({ mode, empresa, obras, usuario, onSalvar, onFechar }) {
     telefone: isEdit ? (usuario?.telefone ?? '') : '',
     perfil:   isEdit ? (usuario?.perfil ?? 'solicitante') : 'solicitante',
   }))
-  // Dados de passageiro (todos vão pra tabela passageiros). CPF é obrigatório;
-  // os demais são opcionais. Em edit + user com passageiro_id, é pré-preenchido.
+  // Dados de passageiro (todos vão pra tabela passageiros). CPF e nascimento
+  // são obrigatórios; milhas são opcionais. Em edit + user com passageiro_id,
+  // é pré-preenchido.
   const [pax, setPax] = useState({
-    cpf: '', sobrenome: '', nascimento: '',
+    cpf: '', nascimento: '',
     azul_tudoazul: '', latam_latampass: '', smiles_gol: '',
   })
   const [limites, setLimites]   = useState(LIMITES_INICIAIS)
@@ -136,7 +137,6 @@ function UsuarioModal({ mode, empresa, obras, usuario, onSalvar, onFechar }) {
       if (paxRow) {
         setPax({
           cpf:             paxRow.cpf             ?? '',
-          sobrenome:       paxRow.sobrenome       ?? '',
           nascimento:      paxRow.nascimento      ?? '',
           azul_tudoazul:   paxRow.azul_tudoazul   ?? '',
           latam_latampass: paxRow.latam_latampass ?? '',
@@ -174,16 +174,24 @@ function UsuarioModal({ mode, empresa, obras, usuario, onSalvar, onFechar }) {
     })
   }
 
+  // Converte "1500,00" ou "1500.00" ou "1.500,50" pra number.
+  function parseValor(str) {
+    if (str === '' || str == null) return NaN
+    const s = String(str).replace(/\./g, '').replace(',', '.')
+    return Number(s)
+  }
   // Validação
   const limitesValidos = TIPOS_ITEM.every(t => {
     const l = limites[t.value]
-    return l.ilimitado || (l.valor !== '' && Number(l.valor) >= 0)
+    if (l.ilimitado) return true
+    const v = parseValor(l.valor)
+    return isFinite(v) && v >= 0
   })
   const cpfDigits = String(pax.cpf || '').replace(/\D/g, '')
   const cpfValido = cpfDigits.length === 11
+  const nascimentoValido = !!pax.nascimento
   // Aprovador N1: alçadas obrigatórias E pelo menos 1 obra vinculada.
-  // (Empresas sem divisão de CC devem ter o CC "Viagens" padrão criado com a empresa.)
-  const podeSalvar = (isEdit || form.email) && form.nome && form.telefone && cpfValido &&
+  const podeSalvar = (isEdit || form.email) && form.nome && form.telefone && cpfValido && nascimentoValido &&
     (!isAprovador1 || (limitesValidos && obrasSel.size > 0)) && !carregando
 
   function setPaxField(k, v) { setPax(prev => ({ ...prev, [k]: v })) }
@@ -200,7 +208,6 @@ function UsuarioModal({ mode, empresa, obras, usuario, onSalvar, onFechar }) {
         telefone:        form.telefone,
         perfil:          form.perfil,
         cpf:             cpfDigits,
-        sobrenome:       pax.sobrenome || null,
         nascimento:      pax.nascimento || null,
         azul_tudoazul:   pax.azul_tudoazul || null,
         latam_latampass: pax.latam_latampass || null,
@@ -215,7 +222,7 @@ function UsuarioModal({ mode, empresa, obras, usuario, onSalvar, onFechar }) {
       if (isAprovador1) {
         body.limites = TIPOS_ITEM.map(t => ({
           tipo_item:    t.value,
-          valor_limite: limites[t.value].ilimitado ? null : Number(limites[t.value].valor),
+          valor_limite: limites[t.value].ilimitado ? null : parseValor(limites[t.value].valor),
         }))
         body.obras = Array.from(obrasSel)
       }
@@ -300,16 +307,10 @@ function UsuarioModal({ mode, empresa, obras, usuario, onSalvar, onFechar }) {
               )}
             </div>
             <div>
-              <label className="label flex items-center gap-1"><Cake size={11} /> Nascimento</label>
+              <label className="label flex items-center gap-1"><Cake size={11} /> Nascimento *</label>
               <input className="input" type="date" value={pax.nascimento || ''}
                 onChange={e => setPaxField('nascimento', e.target.value)} />
             </div>
-          </div>
-
-          <div>
-            <label className="label">Sobrenome</label>
-            <input className="input" placeholder="(opcional)" value={pax.sobrenome}
-              onChange={e => setPaxField('sobrenome', e.target.value)} />
           </div>
 
           <div>
@@ -342,10 +343,10 @@ function UsuarioModal({ mode, empresa, obras, usuario, onSalvar, onFechar }) {
                       <div className="flex items-center gap-1">
                         <span className="text-xs" style={{ color: '#6B7280' }}>R$</span>
                         <input
-                          type="number" min="0" step="0.01" placeholder="0,00"
+                          type="text" inputMode="decimal" placeholder="0,00"
                           disabled={l.ilimitado}
                           value={l.ilimitado ? '' : l.valor}
-                          onChange={e => setLimite(t.value, { valor: e.target.value })}
+                          onChange={e => setLimite(t.value, { valor: e.target.value.replace(/[^\d.,]/g, '') })}
                           className="input py-1 px-2 text-xs w-24 text-right"
                           style={{ background: l.ilimitado ? '#F9FAFB' : 'white' }}
                         />
@@ -413,18 +414,32 @@ function UsuarioModal({ mode, empresa, obras, usuario, onSalvar, onFechar }) {
   )
 }
 
-function NovoCentroCustoModal({ empresa, onSalvar, onFechar }) {
-  const [form, setForm] = useState({ nome: '', codigo: '' })
+// Modal unificado — cria ou edita centro de custo. Passa `centro` pra edit.
+function CentroCustoModal({ empresa, centro, onSalvar, onFechar }) {
+  const isEdit = !!centro
+  const [form, setForm] = useState({
+    nome:   centro?.nome   ?? '',
+    codigo: centro?.codigo ?? '',
+  })
   const [salvando, setSalvando] = useState(false)
   async function salvar() {
     if (!form.nome) return
     setSalvando(true)
-    const { data, error } = await supabase.from('obras').insert({ empresa_id: empresa.id, nome: form.nome, codigo: form.codigo || null, ativo: true }).select().single()
+    let data, error
+    if (isEdit) {
+      ;({ data, error } = await supabase.from('obras')
+        .update({ nome: form.nome, codigo: form.codigo || null })
+        .eq('id', centro.id).select().single())
+    } else {
+      ;({ data, error } = await supabase.from('obras')
+        .insert({ empresa_id: empresa.id, nome: form.nome, codigo: form.codigo || null, ativo: true })
+        .select().single())
+    }
     setSalvando(false)
     if (!error) onSalvar(data)
   }
   return (
-    <Modal title={`Centro de custo — ${empresa.nome}`} onClose={onFechar}>
+    <Modal title={isEdit ? `Editar centro — ${centro.nome}` : `Centro de custo — ${empresa.nome}`} onClose={onFechar}>
       <div className="space-y-3">
         <div><label className="label">Nome *</label>
           <input className="input" placeholder="Ex: Obra Pirapora / Geral" value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} /></div>
@@ -434,7 +449,7 @@ function NovoCentroCustoModal({ empresa, onSalvar, onFechar }) {
       <div className="flex gap-3 mt-5">
         <button onClick={onFechar} className="btn-secondary flex-1">Cancelar</button>
         <button onClick={salvar} disabled={!form.nome || salvando} className="btn-primary flex-1 justify-center">
-          {salvando ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Criar
+          {salvando ? <Loader2 size={14} className="animate-spin" /> : (isEdit ? <Save size={14} /> : <Check size={14} />)} {isEdit ? 'Salvar' : 'Criar'}
         </button>
       </div>
     </Modal>
@@ -448,6 +463,7 @@ function EmpresaDetalhe({ empresa, onVoltar, onExcluirEmpresa }) {
   const [modalUsuario, setModalUsuario] = useState(false)
   const [usuarioEdit, setUsuarioEdit]   = useState(null)
   const [modalCentro, setModalCentro]   = useState(false)
+  const [centroEdit, setCentroEdit]     = useState(null)
   const [confirmUser, setConfirmUser]   = useState(null)
   const [confirmCentro, setConfirmCentro] = useState(null)
   const [confirmEmpresa, setConfirmEmpresa] = useState(false)
@@ -502,8 +518,10 @@ function EmpresaDetalhe({ empresa, onVoltar, onExcluirEmpresa }) {
           setUsuarios(prev => prev.map(x => x.id === u.id ? { ...x, ...u } : x))
           setUsuarioEdit(null)
         }} />}
-      {modalCentro && <NovoCentroCustoModal empresa={empresa} onFechar={() => setModalCentro(false)}
+      {modalCentro && <CentroCustoModal empresa={empresa} onFechar={() => setModalCentro(false)}
         onSalvar={c => { setCentros(prev => [...prev, c]); setModalCentro(false) }} />}
+      {centroEdit && <CentroCustoModal empresa={empresa} centro={centroEdit} onFechar={() => setCentroEdit(null)}
+        onSalvar={c => { setCentros(prev => prev.map(x => x.id === c.id ? c : x)); setCentroEdit(null) }} />}
       {confirmUser && <ConfirmModal title="Excluir usuário"
         msg={`Tem certeza que deseja excluir ${confirmUser.nome}?`}
         onConfirm={() => excluirUsuario(confirmUser)} onClose={() => setConfirmUser(null)} />}
@@ -589,14 +607,22 @@ function EmpresaDetalhe({ empresa, onVoltar, onExcluirEmpresa }) {
             centros.length === 0 ? <p className="text-xs text-center py-4" style={{ color: '#9CA3AF' }}>Nenhum centro de custo</p> :
             <div className="space-y-2">
               {centros.map(o => (
-                <div key={o.id} className="flex items-center justify-between py-2 border-b last:border-0" style={{ borderColor: '#F3F4F6' }}>
-                  <div>
-                    <p className="text-sm font-medium" style={{ color: '#1A1614' }}>{o.nome}</p>
+                <div key={o.id} className="group flex items-center justify-between py-2 border-b last:border-0" style={{ borderColor: '#F3F4F6' }}>
+                  <button onClick={() => setCentroEdit(o)}
+                    className="flex-1 min-w-0 text-left cursor-pointer hover:opacity-80 transition-opacity">
+                    <p className="text-sm font-medium truncate" style={{ color: '#1A1614' }}>{o.nome}</p>
                     {o.codigo && <p className="text-xs" style={{ color: '#9CA3AF' }}>{o.codigo}</p>}
-                  </div>
-                  <button onClick={() => setConfirmCentro(o)} className="text-gray-300 hover:text-red-400 p-1">
-                    <Trash2 size={14} />
                   </button>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => setCentroEdit(o)}
+                      className="text-gray-300 hover:text-brand-600 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Editar">
+                      <Pencil size={14} />
+                    </button>
+                    <button onClick={() => setConfirmCentro(o)} className="text-gray-300 hover:text-red-400 p-1" title="Excluir">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
