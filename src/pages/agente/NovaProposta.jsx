@@ -27,10 +27,16 @@ const emissaoVazia = (tipo, rotulo = '') => {
   const base = { _eid: crypto.randomUUID(), tipo, rotulo, trechos: [trechoVazio()], bagagem: '' }
   if (tipo === 'rf') return {
     ...base, tarifa: '', taxas: '', cia: '', rav_pct: '5', cambio: '1',
-    origem_brasil: true, ndc: false, fidelidade: false, nacional: false,
     remarcacao_multa: '', remarcacao_agencia: '', reembolso_multa: '',
   }
   return { ...base, cia: '', pix: '', cartao: '', reembolso_pct: '', remarcacao: '' }
+}
+
+// "10" -> "10x sem juros"; "à vista", "3x" ou qualquer texto -> passa direto.
+function formatarParcelamento(v) {
+  if (!v) return ''
+  const s = String(v).trim()
+  return /^\d+$/.test(s) ? `${s}x sem juros` : s
 }
 
 const opcaoVazia = (kind, n = 1) => {
@@ -38,7 +44,6 @@ const opcaoVazia = (kind, n = 1) => {
   if (kind === 'rf') return {
     ...base, titulo: `Opção ${n}`, rota: '', trechos: [trechoVazio()],
     tarifa: '', taxas: '', cia: '', rav_pct: '5', cambio: '1',
-    origem_brasil: true, ndc: false, fidelidade: false, nacional: false,
     bagagem: '', remarcacao_multa: '', remarcacao_agencia: '', reembolso_multa: '',
   }
   if (kind === 'milhas') return {
@@ -66,7 +71,7 @@ function toApiEmissao(e) {
       kind: 'milhas', rotulo: e.rotulo, rota: '', tipo: '', trechos,
       pix: toNum(e.pix) ?? 0, cartao: toNum(e.cartao) ?? (toNum(e.pix) ?? 0),
     }
-    if (e.cia) p.cia = e.cia
+    if (e.cia) p.cia = formatarParcelamento(e.cia)
     if (toNum(e.reembolso_pct) != null) p.reembolso_pct = toNum(e.reembolso_pct)
     if (e.remarcacao) p.remarcacao = e.remarcacao
     if (e.bagagem) p.bagagem = e.bagagem
@@ -74,9 +79,9 @@ function toApiEmissao(e) {
   }
   const p = {
     kind: 'rf', rotulo: e.rotulo, rota: '', tipo: '', trechos,
-    tarifa: toNum(e.tarifa) ?? 0, taxas: toNum(e.taxas) ?? 0, cia: e.cia,
+    tarifa: toNum(e.tarifa) ?? 0, taxas: toNum(e.taxas) ?? 0,
+    cia: formatarParcelamento(e.cia),
     rav_pct: toNum(e.rav_pct) ?? 0, cambio: toNum(e.cambio) ?? 1,
-    origem_brasil: !!e.origem_brasil, ndc: !!e.ndc, fidelidade: !!e.fidelidade, nacional: !!e.nacional,
   }
   if (e.bagagem) p.bagagem = e.bagagem
   if (toNum(e.remarcacao_multa) != null) { p.remarcacao_multa = toNum(e.remarcacao_multa); p.remarcacao_agencia = toNum(e.remarcacao_agencia) ?? 0 }
@@ -214,8 +219,8 @@ export default function NovaProposta() {
       const p = {
         kind: 'rf', titulo: o.titulo, rota: o.rota, tipo: '', trechos,
         tarifa: toNum(o.tarifa) ?? 0, taxas: toNum(o.taxas) ?? 0,
-        cia: o.cia, rav_pct: toNum(o.rav_pct) ?? 0, cambio: toNum(o.cambio) ?? 1,
-        origem_brasil: !!o.origem_brasil, ndc: !!o.ndc, fidelidade: !!o.fidelidade, nacional: !!o.nacional,
+        cia: formatarParcelamento(o.cia),
+        rav_pct: toNum(o.rav_pct) ?? 0, cambio: toNum(o.cambio) ?? 1,
       }
       if (o.bagagem) p.bagagem = o.bagagem
       if (toNum(o.remarcacao_multa) != null) { p.remarcacao_multa = toNum(o.remarcacao_multa); p.remarcacao_agencia = toNum(o.remarcacao_agencia) ?? 0 }
@@ -501,22 +506,13 @@ function FormRF({ o, onChange, onCliente }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
         <div>
           <label className="label">Parcelamento</label>
-          <input className="input" placeholder="Ex: 10x sem juros / à vista"
+          <input className="input" placeholder="Ex: 10 (vira '10x sem juros')"
             value={o.cia} onChange={e => onChange({ cia: e.target.value })} />
         </div>
         <div>
           <label className="label">Bagagem</label>
           <input className="input" placeholder="2 peças (executiva)" value={o.bagagem} onChange={e => onChange({ bagagem: e.target.value })} />
         </div>
-      </div>
-
-      <div className="flex flex-wrap gap-3 mt-3 text-sm">
-        {[['origem_brasil', 'Origem Brasil'], ['ndc', 'NDC'], ['fidelidade', 'Fidelidade'], ['nacional', 'Nacional']].map(([k, l]) => (
-          <label key={k} className="inline-flex items-center gap-1.5 cursor-pointer">
-            <input type="checkbox" checked={!!o[k]} onChange={e => onChange({ [k]: e.target.checked })} />
-            <span>{l}</span>
-          </label>
-        ))}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
@@ -691,16 +687,8 @@ function CamposRF({ e, onChange }) {
       </div>
       <div className="mt-2">
         <label className="label">Parcelamento</label>
-        <input className="input" placeholder="Ex: 10x sem juros / à vista"
+        <input className="input" placeholder="Ex: 10 (vira '10x sem juros')"
           value={e.cia} onChange={ev => onChange({ cia: ev.target.value })} />
-      </div>
-      <div className="flex flex-wrap gap-3 mt-2 text-sm">
-        {[['origem_brasil', 'Origem Brasil'], ['ndc', 'NDC'], ['fidelidade', 'Fidelidade'], ['nacional', 'Nacional']].map(([k, l]) => (
-          <label key={k} className="inline-flex items-center gap-1.5 cursor-pointer">
-            <input type="checkbox" checked={!!e[k]} onChange={ev => onChange({ [k]: ev.target.checked })} />
-            <span>{l}</span>
-          </label>
-        ))}
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
         <div><label className="label">Multa remarc. (US$)</label><input className="input" placeholder="US$" value={e.remarcacao_multa} onChange={ev => onChange({ remarcacao_multa: ev.target.value })} /></div>
