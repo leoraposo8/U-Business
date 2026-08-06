@@ -170,7 +170,7 @@ export default function ListaDemandas() {
       ) : (
         <>
           {/* MOBILE: cards */}
-          <div className="md:hidden space-y-3">
+          <div className="lg:hidden space-y-3">
             {filtradas.map(d => {
               const paxN = (d.demanda_passageiros ?? []).filter(r => r.passageiros).length || (d.passageiros ? 1 : 0)
               const detalhe = d.tipo === 'hospedagem' ? d.cidade
@@ -203,7 +203,7 @@ export default function ListaDemandas() {
           </div>
 
           {/* DESKTOP: tabela */}
-          <div className="hidden md:block card overflow-hidden">
+          <div className="hidden lg:block card overflow-hidden">
           <table className="w-full">
             <thead>
               <tr style={{ borderBottom: '1px solid #E5E7EB' }}>
