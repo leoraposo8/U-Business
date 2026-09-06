@@ -22,6 +22,8 @@ const TIPO_QUARTO = [
   { value: 'triplo',     label: 'Triplo' },
 ]
 
+const HOSPEDES_POR_TIPO = { individual: 1, duplo: 2, triplo: 3 }
+
 const POSVENDA_TIPOS = [
   { value: 'bagagem',    label: 'Inclusão de bagagem' },
   { value: 'remarcacao', label: 'Remarcação' },
@@ -316,23 +318,13 @@ function CampoHospedagem({ form, set, maxHospedes }) {
                   </button>
                 )}
               </div>
-              <div className="flex items-center gap-4">
-                <select className="input flex-1" value={q.tipo} onChange={e => setQuarto(i, 'tipo', e.target.value)}>
-                  {TIPO_QUARTO.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                </select>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <button type="button" onClick={() => setQuarto(i, 'hospedes', Math.max(1, q.hospedes - 1))}
-                    className="w-7 h-7 rounded-full border flex items-center justify-center text-sm"
-                    style={{ borderColor: '#E5E7EB', color: '#6B7280' }}>−</button>
-                  <span className="text-sm font-medium w-6 text-center" style={{ color: '#1A1614' }}>{q.hospedes}</span>
-                  <button type="button"
-                    onClick={() => setQuarto(i, 'hospedes', Math.min(maxHospedes || 99, q.hospedes + 1))}
-                    disabled={maxHospedes && q.hospedes >= maxHospedes}
-                    className="w-7 h-7 rounded-full border flex items-center justify-center text-sm disabled:opacity-30"
-                    style={{ borderColor: '#E5E7EB', color: '#6B7280' }}>+</button>
-                  <span className="text-xs" style={{ color: '#9CA3AF' }}>hósp.</span>
-                </div>
-              </div>
+              <select className="input" value={q.tipo}
+                onChange={e => {
+                  const t = e.target.value
+                  setQuartos(quartos.map((qq, idx) => idx === i ? { ...qq, tipo: t, hospedes: HOSPEDES_POR_TIPO[t] ?? 1 } : qq))
+                }}>
+                {TIPO_QUARTO.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
             </div>
           ))}
         </div>
