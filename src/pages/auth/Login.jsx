@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { Plane, Loader2 } from 'lucide-react'
+import { Plane, Loader2, Eye, EyeOff } from 'lucide-react'
 
 export default function Login() {
   const { login } = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
+  const [mostrarSenha, setMostrarSenha] = useState(false)
   const [erro, setErro] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -66,14 +67,24 @@ export default function Login() {
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-1">Senha</label>
-              <input
-                type="password"
-                required
-                value={senha}
-                onChange={e => setSenha(e.target.value)}
-                className="block w-full px-3 py-2 text-sm bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-                placeholder="••••••••"
-              />
+              <div className="relative">
+                <input
+                  type={mostrarSenha ? 'text' : 'password'}
+                  required
+                  value={senha}
+                  onChange={e => setSenha(e.target.value)}
+                  className="block w-full px-3 py-2 pr-10 text-sm bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setMostrarSenha(v => !v)}
+                  aria-label={mostrarSenha ? 'Ocultar senha' : 'Mostrar senha'}
+                  className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-white"
+                >
+                  {mostrarSenha ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
             </div>
 
             {erro && (
