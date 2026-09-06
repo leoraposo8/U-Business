@@ -16,13 +16,6 @@ const TIPOS = [
   { key: 'posvenda',   label: 'Pós-venda',   icon: Headphones, desc: 'Remarcação, reembolso...' },
 ]
 
-const TIPO_QUARTO = [
-  { value: 'individual', label: 'Individual' },
-  { value: 'duplo',      label: 'Duplo' },
-  { value: 'triplo',     label: 'Triplo' },
-]
-
-const HOSPEDES_POR_TIPO = { individual: 1, duplo: 2, triplo: 3 }
 
 const POSVENDA_TIPOS = [
   { value: 'bagagem',    label: 'Inclusão de bagagem' },
@@ -277,11 +270,11 @@ function CampoViagem({ form, set, tipo }) {
   )
 }
 
-function CampoHospedagem({ form, set, maxHospedes }) {
-  const quartos = form.quartos_lista ?? [{ tipo: 'individual', hospedes: 1, nomes: [] }]
+function CampoHospedagem({ form, set }) {
+  const quartos = form.quartos_lista ?? [{ hospedes: 1 }]
 
   function setQuartos(lista) { set('quartos_lista', lista) }
-  function addQuarto() { setQuartos([...quartos, { tipo: 'individual', hospedes: 1, nomes: [] }]) }
+  function addQuarto() { setQuartos([...quartos, { hospedes: 1 }]) }
   function removeQuarto(i) { if (quartos.length > 1) setQuartos(quartos.filter((_, idx) => idx !== i)) }
   function setQuarto(i, field, val) {
     setQuartos(quartos.map((q, idx) => idx === i ? { ...q, [field]: val } : q))
@@ -318,13 +311,18 @@ function CampoHospedagem({ form, set, maxHospedes }) {
                   </button>
                 )}
               </div>
-              <select className="input" value={q.tipo}
-                onChange={e => {
-                  const t = e.target.value
-                  setQuartos(quartos.map((qq, idx) => idx === i ? { ...qq, tipo: t, hospedes: HOSPEDES_POR_TIPO[t] ?? 1 } : qq))
-                }}>
-                {TIPO_QUARTO.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
+              <div className="flex items-center justify-between">
+                <span className="text-sm" style={{ color: '#6B7280' }}>Hóspedes neste quarto</span>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => setQuarto(i, 'hospedes', Math.max(1, (q.hospedes ?? 1) - 1))}
+                    className="w-8 h-8 rounded-lg border flex items-center justify-center"
+                    style={{ borderColor: '#E5E7EB', color: '#6B7280' }}>−</button>
+                  <span className="text-lg font-semibold w-6 text-center" style={{ color: '#1A1614' }}>{q.hospedes ?? 1}</span>
+                  <button type="button" onClick={() => setQuarto(i, 'hospedes', (q.hospedes ?? 1) + 1)}
+                    className="w-8 h-8 rounded-lg border flex items-center justify-center"
+                    style={{ borderColor: '#E5E7EB', color: '#6B7280' }}>+</button>
+                </div>
+              </div>
             </div>
           ))}
         </div>
@@ -376,7 +374,7 @@ export default function NovaDemanda() {
   // Arrays de cards por tipo no pacote
   const [pacoteAereos, setPacoteAereos] = useState([{ origem:'', destino:'', data_ida:'', data_volta:'', bagagem:false, ida_flexivel:false, data_ida_min:'', data_ida_max:'', volta_flexivel:false, data_volta_min:'', data_volta_max:'' }])
   const [pacoteRodos, setPacoteRodos]   = useState([{ origem:'', destino:'', data_ida:'', data_volta:'' }])
-  const [pacoteHoteis, setPacoteHoteis] = useState([{ cidade:'', checkin:'', checkout:'', quartos_lista:[{tipo:'individual',hospedes:1}], cafe_manha:true }])
+  const [pacoteHoteis, setPacoteHoteis] = useState([{ cidade:'', checkin:'', checkout:'', quartos_lista:[{hospedes:1}], cafe_manha:true }])
 
   const [form, setForm] = useState({
     obra_id: '',
@@ -418,6 +416,13 @@ export default function NovaDemanda() {
   useEffect(() => {
     if (selecionados.length > qtdPax) setSelecionados(selecionados.slice(0, qtdPax))
   }, [qtdPax])
+
+  // Hospedagem: qtdPax = soma de hospedes por quarto (derivado, nao editavel manualmente)
+  useEffect(() => {
+    if (tipo !== 'hospedagem') return
+    const total = (form.quartos_lista ?? []).reduce((s, q) => s + (q.hospedes || 0), 0)
+    setQtdPax(Math.max(1, total))
+  }, [tipo, form.quartos_lista])
 
   // Reload passageiros/obras when empresa changes (admin_agencia)
   useEffect(() => {
@@ -487,8 +492,8 @@ export default function NovaDemanda() {
         }
         if (pacoteTipos.hospedagem) {
           pacoteHoteis.forEach(ph => {
-            const ql = ph.quartos_lista ?? [{ tipo: 'individual', hospedes: 1 }]
-            const quartoDesc = ql.map((q,i)=>`Q${i+1}: ${q.tipo}, ${q.hospedes} hósp.`).join(' | ')
+            const ql = ph.quartos_lista ?? [{ hospedes: 1 }]
+            const quartoDesc = ql.map((q,i)=>`Q${i+1}: ${q.hospedes} hósp.`).join(' | ')
             const cafe = ph.cafe_manha !== false ? 'Com café da manhã' : 'Sem café da manhã'
             demandas.push({ ...base, tipo: 'hospedagem', passageiro_id: paxPrincipal, pacote_id: pacoteId,
               cidade: ph.cidade, checkin: ph.checkin, checkout: ph.checkout,
@@ -514,8 +519,8 @@ export default function NovaDemanda() {
           observacoes: obs,
         }]
       } else if (tipo === 'hospedagem') {
-        const ql = form.quartos_lista ?? [{ tipo: 'individual', hospedes: 1 }]
-        const quartoDesc = ql.map((q, i) => `Quarto ${i+1}: ${q.tipo}, ${q.hospedes} hósp.`).join(' | ')
+        const ql = form.quartos_lista ?? [{ hospedes: 1 }]
+        const quartoDesc = ql.map((q, i) => `Quarto ${i+1}: ${q.hospedes} hósp.`).join(' | ')
         const cafe = form.cafe_manha !== false ? 'Com café da manhã' : 'Sem café da manhã'
         const obs = [quartoDesc, cafe, buildObservacoes()].filter(Boolean).join(' · ')
         // Uma demanda só, passageiro principal = primeiro selecionado
@@ -635,10 +640,10 @@ export default function NovaDemanda() {
 
         {tipo && (
           <>
-            {/* QUANTIDADE DE PASSAGEIROS — todos exceto pós-venda */}
-            {needsPax && (
+            {/* QUANTIDADE DE PASSAGEIROS — todos exceto pós-venda e hospedagem (que deriva dos quartos) */}
+            {needsPax && tipo !== 'hospedagem' && (
               <div>
-                <label className="label">{tipo === 'hospedagem' ? 'Quantidade de hóspedes' : 'Quantidade de passageiros'} *</label>
+                <label className="label">Quantidade de passageiros *</label>
                 <div className="flex items-center gap-3">
                   <button type="button" onClick={() => setQtdPax(q => Math.max(1, q - 1))}
                     className="w-9 h-9 rounded-lg border flex items-center justify-center transition-colors hover:bg-gray-50"
@@ -723,7 +728,7 @@ export default function NovaDemanda() {
             {tipo === 'rodoviario' && <CampoViagem form={form} set={set} tipo="rodoviario" />}
 
             {/* HOSPEDAGEM */}
-            {tipo === 'hospedagem' && <CampoHospedagem form={form} set={set} maxHospedes={qtdPax} />}
+            {tipo === 'hospedagem' && <CampoHospedagem form={form} set={set} />}
 
             {/* PACOTE */}
             {tipo === 'pacote' && (
@@ -829,11 +834,11 @@ export default function NovaDemanda() {
                           )}
                         </div>
                         <CampoHospedagem
-                          form={ph} maxHospedes={qtdPax}
+                          form={ph}
                           set={(f,v)=>setPacoteHoteis(prev=>prev.map((x,i)=>i===idx?{...x,[f]:v}:x))} />
                       </div>
                     ))}
-                    <button type="button" onClick={() => setPacoteHoteis(prev=>[...prev,{cidade:'',checkin:'',checkout:'',quartos_lista:[{tipo:'individual',hospedes:1}],cafe_manha:true}])}
+                    <button type="button" onClick={() => setPacoteHoteis(prev=>[...prev,{cidade:'',checkin:'',checkout:'',quartos_lista:[{hospedes:1}],cafe_manha:true}])}
                       className="flex items-center gap-2 text-sm font-medium px-3 py-2 rounded-lg border" style={{ color: '#7E22CE', borderColor: '#e9d5ff' }}>
                       <Plus size={14}/> Adicionar outra hospedagem
                     </button>
