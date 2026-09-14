@@ -306,8 +306,32 @@ export default function DetalheDemanda() {
       let proximoNivelAlvo = null
 
       if (modelo === 'organograma') {
+        // Nivel_2 aprovando: finaliza direto.
+        // Nivel_0 ou nivel_1 aprovando: escala pro SEU proprio aprovador_direto.
+        //   - Se aprovador_direto existe: usa ele (nivel_1 especifico ou nivel_2)
+        //   - Se nao: escala pra nivel_2 (qualquer)
         if (meuPerfil === 'aprovador_nivel_0' || meuPerfil === 'aprovador_1') {
-          proximoNivelAlvo = 2  // ambos escalam pro nivel 2
+          const { data: meu } = await supabase
+            .from('perfis').select('aprovador_direto_id').eq('id', perfil.id).maybeSingle()
+          const adId = meu?.aprovador_direto_id
+          if (adId) {
+            const { data: ad } = await supabase
+              .from('perfis').select('id, perfil, empresa_id').eq('id', adId).maybeSingle()
+            const nivelAd = ad?.perfil === 'aprovador_nivel_0' ? 0
+                          : ad?.perfil === 'aprovador_1'       ? 1
+                          : ad?.perfil === 'aprovador_2'       ? 2 : null
+            if (nivelAd !== null && ad.empresa_id === demanda.empresa_id) {
+              // Escala pro proprio aprovador direto
+              statusNovo = 'aguardando_aprovacao'
+              novoAprovadorId = ad.id
+              novoNivel = nivelAd
+              motivoEscalacao = `Escalado para aprovador direto (Nivel ${nivelAd})`
+            } else {
+              proximoNivelAlvo = 2  // fallback
+            }
+          } else {
+            proximoNivelAlvo = 2  // fallback
+          }
         }
         // aprovador_2 (ou admin_agencia) -> aprovado direto
       } else {
@@ -450,16 +474,14 @@ export default function DetalheDemanda() {
   // o N2 quando escalado. Admin_agencia continua podendo aprovar tudo por
   // convenção (fallback operacional).
   const souAprovadorDaDemanda = perfil?.id && demanda.aprovador_id === perfil.id
-  // No organograma, qualquer aprovador do nivel esperado pode aprovar (nao so o designado).
+  // Organograma: SO nivel_2 pode aprovar qualquer demanda pendente nivel 2.
+  // Nivel_0 e nivel_1: apenas o designado (aprovador_id) pode aprovar.
   const modeloOrgDemanda = demanda.empresas?.modelo_aprovacao === 'organograma'
-  const meuNivelPerfil = perfil?.perfil === 'aprovador_nivel_0' ? 0
-                       : perfil?.perfil === 'aprovador_1'       ? 1
-                       : perfil?.perfil === 'aprovador_2'       ? 2 : null
-  const souAprovadorDoNivel = modeloOrgDemanda
-    && meuNivelPerfil !== null
-    && demanda.proximo_aprovador_nivel === meuNivelPerfil
+  const souNivel2Generico = modeloOrgDemanda
+    && perfil?.perfil === 'aprovador_2'
+    && demanda.proximo_aprovador_nivel === 2
   const podAprovar = demanda.status === 'aguardando_aprovacao'
-    && (souAprovadorDaDemanda || souAprovadorDoNivel || isAgencia)
+    && (souAprovadorDaDemanda || souNivel2Generico || isAgencia)
   const podeRevisarOpcoes = isAgencia && demanda.status === 'aguardando_aprovacao'
   const podeExcluir = demanda.status === 'aguardando_opcoes' && (perfil?.id === demanda.solicitante_id || isAprovador)
   const podeDesaprovar = (souAprovadorDaDemanda || isAgencia) && demanda.status === 'aprovado' && demanda.status !== 'emitido'

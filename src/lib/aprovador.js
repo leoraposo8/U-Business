@@ -1,43 +1,25 @@
 // Roteamento inicial de aprovador.
-// Dado (empresaId, obraId, solicitanteId), decide qual aprovador deve receber
-// a demanda e em que nivel ela entra.
-//
 // Modelos de aprovacao suportados (empresas.modelo_aprovacao):
 //
 //   'alcada' (padrao): fluxo por alcada financeira.
 //     - Tenta aprovador_1 vinculado ao CC. Se nao houver, cai pro aprovador_2.
-//     - Nivel inicial = 1 (ou 2 no fallback).
 //
-//   'organograma': fluxo por hierarquia (independe de valor).
-//     Escolhe o nivel INICIAL de aprovacao baseado no perfil do proprio
-//     solicitante — porque o "ele mesmo aprova" da hierarquia significa
-//     que o pedido pula quem esta no nivel do solicitante:
-//       solicitante         -> nivel 0 (skip nivel 1 depois -> vai pro 2)
-//       aprovador_nivel_0   -> nivel 1
-//       aprovador_1         -> nivel 2
-//       aprovador_2         -> auto-aprova (aprovadorId = ele mesmo, nivel=null)
-//     Qualquer aprovador do nivel escolhido serve — pega o 1o por nome.
+//   'organograma': fluxo por hierarquia com aprovador direto por pessoa.
+//     - Se quem cria e SOLICITANTE ou APROVADOR_NIVEL_0: usa o
+//       `aprovador_direto_id` do proprio solicitante. Nivel = do perfil desse
+//       aprovador direto. Fallback (se null): primeiro aprovador do proximo
+//       nivel por nome ASC.
+//     - Se quem cria e APROVADOR_1: vai direto pra nivel 2 (qualquer nivel_2).
+//     - Se quem cria e APROVADOR_2: auto-aprova (aprovadorId = ele mesmo, nivel=null).
 //
 // Retorna: { aprovadorId, nivel, motivo, autoAprovar }
-//   - aprovadorId: uuid do aprovador designado (ou solicitante em auto-aprovar)
-//   - nivel: 0/1/2 quando ha aprovacao pendente; null quando auto-aprovar
-//   - autoAprovar: true quando o proprio solicitante aprova (nivel_2 no organograma)
 
-const NIVEL_INICIAL_ORGANOGRAMA = {
-  solicitante:        0,
-  aprovador_nivel_0:  1,
-  aprovador_1:        2,
-  aprovador_2:        null, // auto-aprova
-}
+const PERFIL_POR_NIVEL = { 0: 'aprovador_nivel_0', 1: 'aprovador_1', 2: 'aprovador_2' }
+const NIVEL_POR_PERFIL = { aprovador_nivel_0: 0, aprovador_1: 1, aprovador_2: 2 }
 
-const PERFIL_POR_NIVEL = {
-  0: 'aprovador_nivel_0',
-  1: 'aprovador_1',
-  2: 'aprovador_2',
-}
-
-async function pegaPrimeiroDoNivel(supabase, empresaId, nivel) {
+async function primeiroDoNivel(supabase, empresaId, nivel) {
   const perfilTarget = PERFIL_POR_NIVEL[nivel]
+  if (!perfilTarget) return null
   const { data } = await supabase
     .from('perfis')
     .select('id')
@@ -51,32 +33,44 @@ async function pegaPrimeiroDoNivel(supabase, empresaId, nivel) {
 }
 
 export async function resolverAprovador(supabase, { empresaId, obraId, solicitanteId }) {
-  // Carrega modelo da empresa e perfil do solicitante em paralelo.
   const [empRes, solRes] = await Promise.all([
     supabase.from('empresas').select('modelo_aprovacao').eq('id', empresaId).maybeSingle(),
     solicitanteId
-      ? supabase.from('perfis').select('perfil').eq('id', solicitanteId).maybeSingle()
+      ? supabase.from('perfis').select('perfil, aprovador_direto_id').eq('id', solicitanteId).maybeSingle()
       : Promise.resolve({ data: null }),
   ])
-  const modelo = empRes.data?.modelo_aprovacao || 'alcada'
+  const modelo    = empRes.data?.modelo_aprovacao || 'alcada'
   const perfilSol = solRes.data?.perfil
+  const adId      = solRes.data?.aprovador_direto_id
 
   if (modelo === 'organograma') {
-    const nivel = NIVEL_INICIAL_ORGANOGRAMA[perfilSol] ?? 0
-    if (nivel === null) {
-      // Auto-aprovacao: aprovador_2 pedindo pra si mesmo
+    // Nivel_2 criando: auto-aprova
+    if (perfilSol === 'aprovador_2') {
       return { aprovadorId: solicitanteId, nivel: null, autoAprovar: true, motivo: 'auto_nivel_2' }
     }
-    const aprovadorId = await pegaPrimeiroDoNivel(supabase, empresaId, nivel)
-    if (aprovadorId) {
-      return { aprovadorId, nivel, motivo: `organograma_nivel_${nivel}` }
+    // Nivel_1 criando: vai direto pra nivel_2 (qualquer)
+    if (perfilSol === 'aprovador_1') {
+      const id = await primeiroDoNivel(supabase, empresaId, 2)
+      return { aprovadorId: id, nivel: 2, motivo: 'nivel_1_pra_nivel_2' }
     }
-    // Fallback: se nao acha alguem do nivel, sobe pro proximo disponivel
-    for (const n of [1, 2]) {
-      if (n <= nivel) continue
-      const alt = await pegaPrimeiroDoNivel(supabase, empresaId, n)
-      if (alt) return { aprovadorId: alt, nivel: n, motivo: `organograma_fallback_${n}` }
+    // Solicitante ou nivel_0: usa aprovador_direto do proprio requisitante
+    if (adId) {
+      const { data: ad } = await supabase
+        .from('perfis').select('perfil').eq('id', adId).maybeSingle()
+      const nivelAd = NIVEL_POR_PERFIL[ad?.perfil]
+      if (nivelAd !== undefined) {
+        return { aprovadorId: adId, nivel: nivelAd, motivo: `aprovador_direto_${ad.perfil}` }
+      }
     }
+    // Fallback: primeiro nivel_0 (pra solicitante) ou primeiro nivel_1 (pra nivel_0)
+    const nivelFallback = perfilSol === 'aprovador_nivel_0' ? 1 : 0
+    const idFallback = await primeiroDoNivel(supabase, empresaId, nivelFallback)
+    if (idFallback) {
+      return { aprovadorId: idFallback, nivel: nivelFallback, motivo: `fallback_nivel_${nivelFallback}` }
+    }
+    // Ultimo recurso: qualquer nivel_2
+    const n2 = await primeiroDoNivel(supabase, empresaId, 2)
+    if (n2) return { aprovadorId: n2, nivel: 2, motivo: 'fallback_final_nivel_2' }
     return { aprovadorId: null, nivel: null, motivo: 'organograma_sem_aprovador' }
   }
 

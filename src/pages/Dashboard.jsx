@@ -36,14 +36,12 @@ export default function Dashboard() {
       //   admin_agencia/agente → tudo; aprovador (qualquer nivel) → dele ou solicitadas por ele; solicitante → só as suas.
       if (perfil?.id && !isAgencia) {
         if (isAprovador) {
-          const modeloOrg = perfil?.empresas?.modelo_aprovacao === 'organograma'
-          const meuNivel  = perfil?.perfil === 'aprovador_nivel_0' ? 0
-                          : perfil?.perfil === 'aprovador_1'       ? 1
-                          : perfil?.perfil === 'aprovador_2'       ? 2 : null
-          if (modeloOrg && meuNivel !== null) {
+          const modeloOrg   = perfil?.empresas?.modelo_aprovacao === 'organograma'
+          const soNivel2Gen = modeloOrg && perfil?.perfil === 'aprovador_2'
+          if (soNivel2Gen) {
             q = q.or(
               `aprovador_id.eq.${perfil.id},solicitante_id.eq.${perfil.id},` +
-              `and(status.eq.aguardando_aprovacao,proximo_aprovador_nivel.eq.${meuNivel})`
+              `and(status.eq.aguardando_aprovacao,proximo_aprovador_nivel.eq.2)`
             )
           } else {
             q = q.or(`aprovador_id.eq.${perfil.id},solicitante_id.eq.${perfil.id}`)
