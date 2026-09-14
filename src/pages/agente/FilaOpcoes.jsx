@@ -286,6 +286,7 @@ export default function FilaOpcoes() {
     // e so ida (sem data_volta), forca trecho='ida' independente do state.
     if (!isPosvenda) {
       const temVolta = !!demandaAtiva.data_volta
+      console.log('[valida] temVolta=', temVolta, 'data_volta=', demandaAtiva.data_volta, 'validas=', JSON.stringify(validas))
       const faltando = validas.findIndex(o => {
         const trecho = temVolta ? (o.trecho || 'ida_e_volta') : 'ida'
         if (trecho === 'ida' || trecho === 'ida_e_volta') {
