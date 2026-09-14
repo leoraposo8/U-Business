@@ -292,11 +292,12 @@ export default function DetalheDemanda() {
       `).eq('id', id).single(),
       supabase.from('demanda_historico').select('*, usuario:perfis!usuario_id(nome)').eq('demanda_id', id).order('created_at'),
       supabase.from('opcoes').select('*').eq('demanda_id', id).order('created_at'),
-      supabase.from('aprovacoes').select('*, opcao:opcoes(*)').eq('demanda_id', id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+      supabase.from('aprovacoes').select('*, opcao:opcoes!opcao_id(*)').eq('demanda_id', id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('bilhetes').select('*').eq('demanda_id', id).maybeSingle(),
     ])
     setDemanda(d); setHistorico(h ?? []); setOpcoes(o ?? [])
     setAprovacao(a); setBilhete(b)
+    console.log('[DetalheDemanda] aprovacao carregada:', JSON.stringify(a))
     setLoading(false)
     const now = new Date()
     setUploadData(now.toISOString().split('T')[0])
