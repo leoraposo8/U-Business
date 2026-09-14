@@ -43,15 +43,16 @@ export function AuthProvider({ children }) {
   }
 
   const isAgencia    = perfil?.perfil === 'admin_agencia' || perfil?.perfil === 'agente'
+  const isAprovador0 = perfil?.perfil === 'aprovador_nivel_0'
   const isAprovador1 = perfil?.perfil === 'aprovador_1'
   const isAprovador2 = perfil?.perfil === 'aprovador_2'
-  const isAprovador  = isAprovador1 || isAprovador2 || perfil?.perfil === 'admin_agencia'
+  const isAprovador  = isAprovador0 || isAprovador1 || isAprovador2 || perfil?.perfil === 'admin_agencia'
   const isAdmin      = perfil?.perfil === 'admin_agencia'
 
   return (
     <AuthContext.Provider value={{
       user, perfil, loading, login, logout,
-      isAgencia, isAprovador, isAprovador1, isAprovador2, isAdmin,
+      isAgencia, isAprovador, isAprovador0, isAprovador1, isAprovador2, isAdmin,
     }}>
       {children}
     </AuthContext.Provider>

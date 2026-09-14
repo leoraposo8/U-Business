@@ -288,20 +288,22 @@ export default function FilaOpcoes() {
         // Volta pra tela de detalhe da demanda revisada
         navigate(`/app/demandas/${demandaAtiva.id}`)
       } else {
-        // Primeiro envio: se aprovador_id ainda não foi setado (demanda criada
-        // antes da 3.3.1 ou fluxo especial), roteia agora. Se já tem, mantém.
-        let aprovadorId = demandaAtiva.aprovador_id
-        if (!aprovadorId) {
+        // Primeiro envio: se aprovador_id/nivel ainda nao foram setados
+        // (demanda criada antes ou fluxo especial), roteia agora.
+        let aprovadorId  = demandaAtiva.aprovador_id
+        let proximoNivel = demandaAtiva.proximo_aprovador_nivel
+        if (!aprovadorId || proximoNivel === null || proximoNivel === undefined) {
           const r = await resolverAprovador(supabase, {
             empresaId: demandaAtiva.empresa_id, obraId: demandaAtiva.obra_id,
+            solicitanteId: demandaAtiva.solicitante_id,
           })
-          aprovadorId = r.aprovadorId
+          aprovadorId  = aprovadorId  ?? r.aprovadorId
+          proximoNivel = (proximoNivel !== null && proximoNivel !== undefined) ? proximoNivel : r.nivel
         }
         if (!aprovadorId) {
           alert(
-            'Nao foi possivel enviar as opcoes: esta empresa nao tem Aprovador Nivel 2 cadastrado ' +
-            'e nao ha Aprovador Nivel 1 disponivel (nem vinculado ao centro de custo, nem global). ' +
-            'Cadastre pelo menos um aprovador antes de enviar.'
+            'Nao foi possivel enviar as opcoes: esta empresa nao tem aprovador ' +
+            'compatível cadastrado. Cadastre pelo menos um aprovador do nível certo antes de enviar.'
           )
           setEnviando(false)
           return
@@ -312,6 +314,7 @@ export default function FilaOpcoes() {
           status: 'aguardando_aprovacao',
           agente_id: perfil.id,
           aprovador_id: aprovadorId,
+          proximo_aprovador_nivel: proximoNivel,
         }).eq('id', demandaAtiva.id)
         await supabase.from('demanda_historico').insert({
           demanda_id: demandaAtiva.id, status_anterior: 'aguardando_opcoes',

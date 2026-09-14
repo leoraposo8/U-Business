@@ -454,11 +454,10 @@ export default function NovaDemanda() {
     try {
       const empresaFinal = perfil.empresa_id || empresaIdSel
 
-      // Fase 3.3.1 — Roteia o aprovador já na criação, pra ele ver a demanda
-      // desde `aguardando_opcoes` (não precisa esperar agente enviar opções).
-      // Todas as demandas deste submit têm mesma empresa/obra, então resolvemos 1x.
-      const { aprovadorId: aprovadorInicial } = await resolverAprovador(supabase, {
-        empresaId: empresaFinal, obraId: form.obra_id || null,
+      // Roteia o aprovador ja na criacao. Modelo alcada usa aprovador do CC;
+      // modelo organograma usa hierarquia (nivel depende do perfil do solicitante).
+      const { aprovadorId: aprovadorInicial, nivel: nivelInicial } = await resolverAprovador(supabase, {
+        empresaId: empresaFinal, obraId: form.obra_id || null, solicitanteId: perfil.id,
       })
 
       const base = {
@@ -466,7 +465,8 @@ export default function NovaDemanda() {
         solicitante_id: perfil.id,
         status: 'aguardando_opcoes',
         obra_id: form.obra_id || null,
-        aprovador_id: aprovadorInicial,  // pode ser null se empresa sem aprovador cadastrado
+        aprovador_id: aprovadorInicial,           // pode ser null se empresa sem aprovador
+        proximo_aprovador_nivel: nivelInicial,    // 0/1/2 ou null (auto-aprovar nivel_2)
       }
 
       let demandas = []

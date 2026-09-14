@@ -268,6 +268,7 @@ export default function DetalheDemanda() {
         *, passageiros(nome, sobrenome, cpf, contato),
         demanda_passageiros(passageiros(nome, sobrenome, cpf, contato)),
         obras(nome, codigo),
+        empresas(id, nome, modelo_aprovacao),
         solicitante:perfis!solicitante_id(nome),
         agente:perfis!agente_id(nome)
       `).eq('id', id).single(),
@@ -290,65 +291,81 @@ export default function DetalheDemanda() {
     if (!opcaoSelecionada || !tipoEmissaoSel) return
     setSalvando(true)
     try {
-      // Fase 3.1 — checagem de alçada + escalação N1→N2.
-      // Aprovador_1: consulta seu limite pro tipo da demanda e compara com o
-      // preço da opção (por noite se hospedagem). Dentro → aprovado. Fora →
-      // escala pra 'aguardando_aprovacao_2' e transfere aprovador_id pro N2.
-      // Aprovador_2 (e admin_agencia): fecha direto como 'aprovado'.
+      // Decide se aprova em definitivo ou escala pro proximo nivel.
+      //   alcada:      aprovador_1 dentro da alcada -> aprovado;
+      //                aprovador_1 fora da alcada  -> nivel 2;
+      //                aprovador_2 -> aprovado.
+      //   organograma: nivel 0 -> nivel 2 (skip 1); nivel 1 -> nivel 2;
+      //                nivel 2 -> aprovado.
+      const modelo = demanda.empresas?.modelo_aprovacao || 'alcada'
+      const meuPerfil = perfil.perfil
       let statusNovo = 'aprovado'
       let novoAprovadorId = perfil.id
+      let novoNivel = null
       let motivoEscalacao = null
+      let proximoNivelAlvo = null
 
-      if (isAprovador1) {
-        const opcao = opcoes.find(o => o.id === opcaoSelecionada)
-        const preco = Number(opcao?.preco_venda ?? 0)
-
-        // Valor a comparar: por-noite pra hospedagem, valor cheio pros outros.
-        let valorComparar = preco
-        if (demanda.tipo === 'hospedagem' && demanda.checkin && demanda.checkout) {
-          const dias = Math.max(1, Math.round(
-            (new Date(demanda.checkout) - new Date(demanda.checkin)) / (1000 * 60 * 60 * 24)
-          ))
-          valorComparar = preco / dias
+      if (modelo === 'organograma') {
+        if (meuPerfil === 'aprovador_nivel_0' || meuPerfil === 'aprovador_1') {
+          proximoNivelAlvo = 2  // ambos escalam pro nivel 2
         }
-
-        const { data: limiteRow } = await supabase
-          .from('aprovador_limites')
-          .select('valor_limite')
-          .eq('usuario_id', perfil.id)
-          .eq('tipo_item', demanda.tipo)
-          .maybeSingle()
-
-        // Semântica: linha ausente = bloqueia (escala). valor_limite NULL = ilimitado.
-        const temLimiteCadastrado = !!limiteRow
-        const limite = limiteRow?.valor_limite
-        const dentroDaAlcada = temLimiteCadastrado && (limite === null || valorComparar <= Number(limite))
-
-        if (!dentroDaAlcada) {
-          const { data: n2 } = await supabase
-            .from('perfis')
-            .select('id, nome')
-            .eq('empresa_id', demanda.empresa_id)
-            .eq('perfil', 'aprovador_2')
-            .eq('ativo', true)
-            .limit(1)
-            .maybeSingle()
-
-          if (!n2) {
-            alert('Esta empresa nao tem um Aprovador Nivel 2 cadastrado. Cadastre um antes de aprovar demandas acima da alcada do Nivel 1.')
-            setSalvando(false)
-            return
+        // aprovador_2 (ou admin_agencia) -> aprovado direto
+      } else {
+        // alcada: so escala se estou aprovando como nivel_1
+        if (meuPerfil === 'aprovador_1') {
+          const opcao = opcoes.find(o => o.id === opcaoSelecionada)
+          const preco = Number(opcao?.preco_venda ?? 0)
+          let valorComparar = preco
+          if (demanda.tipo === 'hospedagem' && demanda.checkin && demanda.checkout) {
+            const dias = Math.max(1, Math.round(
+              (new Date(demanda.checkout) - new Date(demanda.checkin)) / (1000 * 60 * 60 * 24)
+            ))
+            valorComparar = preco / dias
           }
-
-          statusNovo = 'aguardando_aprovacao_2'
-          novoAprovadorId = n2.id
-          motivoEscalacao = temLimiteCadastrado
-            ? `Endossado pelo Nivel 1, escalado para Nivel 2 (${valorComparar.toFixed(2)} acima do teto de ${Number(limite).toFixed(2)})`
-            : 'Endossado pelo Nivel 1, escalado para Nivel 2 (Nivel 1 sem alcada cadastrada pra este tipo)'
+          const { data: limiteRow } = await supabase
+            .from('aprovador_limites')
+            .select('valor_limite')
+            .eq('usuario_id', perfil.id)
+            .eq('tipo_item', demanda.tipo)
+            .maybeSingle()
+          const temLimite = !!limiteRow
+          const limite = limiteRow?.valor_limite
+          const dentroDaAlcada = temLimite && (limite === null || valorComparar <= Number(limite))
+          if (!dentroDaAlcada) {
+            proximoNivelAlvo = 2
+            motivoEscalacao = temLimite
+              ? `Endossado pelo Nivel 1, escalado para Nivel 2 (${valorComparar.toFixed(2)} acima do teto de ${Number(limite).toFixed(2)})`
+              : 'Endossado pelo Nivel 1, escalado para Nivel 2 (sem alcada cadastrada pra este tipo)'
+          }
         }
       }
 
-      // Registra a decisão do aprovador atual (endosso do N1 ou aprovação final).
+      // Se escala, procura aprovador do proximo nivel
+      if (proximoNivelAlvo !== null) {
+        const perfilAlvo = proximoNivelAlvo === 0 ? 'aprovador_nivel_0'
+                         : proximoNivelAlvo === 1 ? 'aprovador_1'
+                         : 'aprovador_2'
+        const { data: prox } = await supabase
+          .from('perfis')
+          .select('id, nome')
+          .eq('empresa_id', demanda.empresa_id)
+          .eq('perfil', perfilAlvo)
+          .eq('ativo', true)
+          .order('nome', { ascending: true })
+          .limit(1)
+          .maybeSingle()
+        if (!prox) {
+          alert(`Esta empresa nao tem um Aprovador Nivel ${proximoNivelAlvo} cadastrado. Cadastre antes de aprovar.`)
+          setSalvando(false)
+          return
+        }
+        statusNovo = 'aguardando_aprovacao'
+        novoAprovadorId = prox.id
+        novoNivel = proximoNivelAlvo
+        if (!motivoEscalacao) motivoEscalacao = `Escalado para Nivel ${proximoNivelAlvo}`
+      }
+
+      // Registra a decisao do aprovador atual (endosso ou aprovacao final).
       await supabase.from('aprovacoes').insert({
         demanda_id: id, opcao_id: opcaoSelecionada,
         aprovador_id: perfil.id, decisao: 'aprovado',
@@ -356,6 +373,7 @@ export default function DetalheDemanda() {
       })
       await supabase.from('demandas').update({
         status: statusNovo, aprovador_id: novoAprovadorId,
+        proximo_aprovador_nivel: novoNivel,
       }).eq('id', id)
       await supabase.from('demanda_historico').insert({
         demanda_id: id, status_anterior: demanda.status,
@@ -432,10 +450,8 @@ export default function DetalheDemanda() {
   // o N2 quando escalado. Admin_agencia continua podendo aprovar tudo por
   // convenção (fallback operacional).
   const souAprovadorDaDemanda = perfil?.id && demanda.aprovador_id === perfil.id
-  const podAprovar =
-    (demanda.status === 'aguardando_aprovacao'   && (souAprovadorDaDemanda || isAgencia)) ||
-    (demanda.status === 'aguardando_aprovacao_2' && (souAprovadorDaDemanda || isAgencia))
-  const podeRevisarOpcoes = isAgencia && (demanda.status === 'aguardando_aprovacao' || demanda.status === 'aguardando_aprovacao_2')
+  const podAprovar = demanda.status === 'aguardando_aprovacao' && (souAprovadorDaDemanda || isAgencia)
+  const podeRevisarOpcoes = isAgencia && demanda.status === 'aguardando_aprovacao'
   const podeExcluir = demanda.status === 'aguardando_opcoes' && (perfil?.id === demanda.solicitante_id || isAprovador)
   const podeDesaprovar = (souAprovadorDaDemanda || isAgencia) && demanda.status === 'aprovado' && demanda.status !== 'emitido'
 

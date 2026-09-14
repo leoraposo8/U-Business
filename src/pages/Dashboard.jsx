@@ -24,7 +24,7 @@ function StatCard({ label, value, icon: Icon, color, onClick }) {
 }
 
 export default function Dashboard() {
-  const { perfil, isAgencia, isAprovador1, isAprovador2 } = useAuth()
+  const { perfil, isAgencia, isAprovador } = useAuth()
   const navigate = useNavigate()
   const [counts, setCounts] = useState({})
   const [loading, setLoading] = useState(true)
@@ -32,10 +32,10 @@ export default function Dashboard() {
   useEffect(() => {
     async function load() {
       let q = supabase.from('demandas').select('status')
-      // Filtro por role (igual ao ListaDemandas):
-      //   admin_agencia/agente → tudo; aprovador → dele ou solicitadas por ele; solicitante → só as suas.
+      // Filtro por role:
+      //   admin_agencia/agente → tudo; aprovador (qualquer nivel) → dele ou solicitadas por ele; solicitante → só as suas.
       if (perfil?.id && !isAgencia) {
-        if (isAprovador1 || isAprovador2) {
+        if (isAprovador) {
           q = q.or(`aprovador_id.eq.${perfil.id},solicitante_id.eq.${perfil.id}`)
         } else {
           q = q.eq('solicitante_id', perfil.id)
@@ -50,22 +50,20 @@ export default function Dashboard() {
       setLoading(false)
     }
     load()
-  }, [perfil?.id, isAgencia, isAprovador1, isAprovador2])
+  }, [perfil?.id, isAgencia, isAprovador])
 
   const stats = isAgencia
     ? [
-        { label: 'Aguardando opções',        key: 'aguardando_opcoes',        icon: Clock,        color: 'bg-blue-100 text-blue-600' },
-        { label: 'Aguardando aprovação N1',  key: 'aguardando_aprovacao',     icon: AlertCircle,  color: 'bg-amber-100 text-amber-600' },
-        { label: 'Aguardando aprovação N2',  key: 'aguardando_aprovacao_2',   icon: AlertCircle,  color: 'bg-orange-100 text-orange-600' },
-        { label: 'Aprovados p/ emitir',      key: 'aprovado',                 icon: CheckCircle,  color: 'bg-green-100 text-green-600' },
-        { label: 'Emitidos',                 key: 'emitido',                  icon: Ticket,       color: 'bg-brand-100 text-brand-600' },
+        { label: 'Aguardando opções',    key: 'aguardando_opcoes',    icon: Clock,        color: 'bg-blue-100 text-blue-600' },
+        { label: 'Aguardando aprovação', key: 'aguardando_aprovacao', icon: AlertCircle,  color: 'bg-amber-100 text-amber-600' },
+        { label: 'Aprovados p/ emitir',  key: 'aprovado',             icon: CheckCircle,  color: 'bg-green-100 text-green-600' },
+        { label: 'Emitidos',             key: 'emitido',              icon: Ticket,       color: 'bg-brand-100 text-brand-600' },
       ]
     : [
-        { label: 'Minhas solicitações',      key: 'rascunho',                 icon: Clock,        color: 'bg-slate-100 text-slate-600' },
-        { label: 'Aguardando aprovação N1',  key: 'aguardando_aprovacao',     icon: AlertCircle,  color: 'bg-amber-100 text-amber-600' },
-        { label: 'Aguardando aprovação N2',  key: 'aguardando_aprovacao_2',   icon: AlertCircle,  color: 'bg-orange-100 text-orange-600' },
-        { label: 'Aprovados',                key: 'aprovado',                 icon: CheckCircle,  color: 'bg-green-100 text-green-600' },
-        { label: 'Emitidos',                 key: 'emitido',                  icon: Ticket,       color: 'bg-brand-100 text-brand-600' },
+        { label: 'Minhas solicitações',  key: 'rascunho',             icon: Clock,        color: 'bg-slate-100 text-slate-600' },
+        { label: 'Aguardando aprovação', key: 'aguardando_aprovacao', icon: AlertCircle,  color: 'bg-amber-100 text-amber-600' },
+        { label: 'Aprovados',            key: 'aprovado',             icon: CheckCircle,  color: 'bg-green-100 text-green-600' },
+        { label: 'Emitidos',             key: 'emitido',              icon: Ticket,       color: 'bg-brand-100 text-brand-600' },
       ]
 
   return (

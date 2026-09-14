@@ -9,12 +9,11 @@ import { fmtTs, fmtData, fmtDataCurta } from '../../lib/datetime'
 
 const STATUS_OPTS = [
   { value: '', label: 'Todos os status' },
-  { value: 'aguardando_opcoes',      label: 'Aguardando opções' },
-  { value: 'aguardando_aprovacao',   label: 'Aguardando aprovação N1' },
-  { value: 'aguardando_aprovacao_2', label: 'Aguardando aprovação N2' },
-  { value: 'aprovado',               label: 'Aprovado' },
-  { value: 'emitido',                label: 'Emitido' },
-  { value: 'rejeitado',              label: 'Rejeitado' },
+  { value: 'aguardando_opcoes',    label: 'Aguardando opções' },
+  { value: 'aguardando_aprovacao', label: 'Aguardando aprovação' },
+  { value: 'aprovado',             label: 'Aprovado' },
+  { value: 'emitido',              label: 'Emitido' },
+  { value: 'rejeitado',            label: 'Rejeitado' },
 ]
 
 // fmt -> use fmtData from lib/datetime
@@ -56,7 +55,7 @@ function PaxCell({ demanda_passageiros: dp, passageiro }) {
 }
 
 export default function ListaDemandas() {
-  const { perfil, isAgencia, isAprovador1, isAprovador2 } = useAuth()
+  const { perfil, isAgencia, isAprovador } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [demandas, setDemandas] = useState([])
@@ -84,7 +83,7 @@ export default function ListaDemandas() {
       //   - aprovador (N1 ou N2): só demandas onde é aprovador OU solicitante
       //   - solicitante: só as suas
       if (perfil?.id && !isAgencia) {
-        if (isAprovador1 || isAprovador2) {
+        if (isAprovador) {
           q = q.or(`aprovador_id.eq.${perfil.id},solicitante_id.eq.${perfil.id}`)
         } else {
           q = q.eq('solicitante_id', perfil.id)
@@ -120,7 +119,7 @@ export default function ListaDemandas() {
       setLoading(false)
     }
     load()
-  }, [filtroStatus, perfil?.id, isAgencia, isAprovador1, isAprovador2])
+  }, [filtroStatus, perfil?.id, isAgencia, isAprovador])
 
   const filtradas = demandas.filter(d => {
     if (!busca) return true

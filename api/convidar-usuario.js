@@ -28,8 +28,10 @@ export const config = { runtime: 'nodejs', maxDuration: 30 }
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-const PERFIS_VALIDOS = ['admin_agencia', 'agente', 'aprovador_1', 'aprovador_2', 'solicitante']
+const PERFIS_VALIDOS = ['admin_agencia', 'agente', 'aprovador_nivel_0', 'aprovador_1', 'aprovador_2', 'solicitante']
 const TIPOS_ITEM     = ['aereo', 'rodoviario', 'hospedagem']
+// Perfis que precisam de alcada + obras. aprovador_nivel_0 so aparece no modelo organograma.
+const PERFIS_COM_ALCADA = new Set(['aprovador_1', 'aprovador_nivel_0'])
 
 // Normaliza CPF pra só dígitos (evita duplicação por diferença de máscara).
 function normalizaCpf(cpf) {
@@ -94,10 +96,10 @@ export default async function handler(req, res) {
     res.status(400).json({ detail: 'cpf deve ter 11 digitos' }); return
   }
 
-  // ─── VALIDAÇÃO ESPECÍFICA DE APROVADOR_1 ─────────────────────────────────
+  // ─── VALIDAÇÃO ESPECÍFICA DE APROVADORES COM ALCADA (nivel_0 e nivel_1) ──
   let limitesLimpos = null
   let obrasLimpas   = null
-  if (perfil === 'aprovador_1') {
+  if (PERFIS_COM_ALCADA.has(perfil)) {
     if (!Array.isArray(limites) || limites.length !== TIPOS_ITEM.length) {
       res.status(400).json({ detail: `limites deve conter exatamente ${TIPOS_ITEM.length} entradas (uma por tipo_item)` }); return
     }
@@ -191,8 +193,8 @@ export default async function handler(req, res) {
     })
     if (insertErr) throw insertErr
 
-    // 4. Aprovador_1 → alçadas + obras
-    if (perfil === 'aprovador_1') {
+    // 4. Aprovadores com alcada (nivel_0 no organograma, nivel_1 sempre) → alçadas + obras
+    if (PERFIS_COM_ALCADA.has(perfil)) {
       const { error: limErr } = await admin.from('aprovador_limites').insert(
         limitesLimpos.map(l => ({ usuario_id: novoUserId, ...l }))
       )

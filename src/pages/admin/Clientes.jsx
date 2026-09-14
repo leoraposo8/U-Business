@@ -2,10 +2,17 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Building2, Users, Plus, ChevronRight, X, Loader2, Mail, Briefcase, Check, AlertCircle, Trash2, Phone, Wallet, Infinity as InfinityIcon, Save, Pencil, CreditCard, Award, Cake } from 'lucide-react'
 
-const PERFIS = [
+const PERFIS_ALCADA = [
   { value: 'aprovador_2', label: 'Aprovador nível 2', desc: 'Aprova qualquer valor; escopo da empresa toda' },
   { value: 'aprovador_1', label: 'Aprovador nível 1', desc: 'Alçada configurável por tipo; vinculado a centros de custo' },
   { value: 'solicitante', label: 'Solicitante',       desc: 'Abre solicitações de viagem' },
+]
+
+const PERFIS_ORGANOGRAMA = [
+  { value: 'aprovador_2',       label: 'Aprovador nível 2', desc: 'Última instância; aprova qualquer valor' },
+  { value: 'aprovador_1',       label: 'Aprovador nível 1', desc: 'Nível intermediário; aprova pedidos do nível 0' },
+  { value: 'aprovador_nivel_0', label: 'Aprovador nível 0', desc: 'Chefe direto dos solicitantes' },
+  { value: 'solicitante',       label: 'Solicitante',       desc: 'Abre solicitações de viagem' },
 ]
 
 const TIPOS_ITEM = [
@@ -105,7 +112,11 @@ function UsuarioModal({ mode, empresa, obras, usuario, onSalvar, onFechar }) {
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro]         = useState('')
 
-  const isAprovador1 = form.perfil === 'aprovador_1'
+  // No modelo alcada, so aprovador_1 tem limites/obras.
+  // No organograma, aprovador_nivel_0 e aprovador_1 tambem.
+  const modeloOrganograma = empresa?.modelo_aprovacao === 'organograma'
+  const perfisDisponiveis = modeloOrganograma ? PERFIS_ORGANOGRAMA : PERFIS_ALCADA
+  const temAlcada = form.perfil === 'aprovador_1' || (modeloOrganograma && form.perfil === 'aprovador_nivel_0')
   const obrasAtivas  = obras.filter(o => o.ativo !== false)
 
   // Em edit: carrega passageiro (se tiver), limites e obras (se N1).
@@ -122,8 +133,10 @@ function UsuarioModal({ mode, empresa, obras, usuario, onSalvar, onFechar }) {
               .eq('id', usuario.passageiro_id).maybeSingle()
           : Promise.resolve({ data: null })
       )
-      // Limites e obras só se aprovador_1
-      if (usuario?.perfil === 'aprovador_1') {
+      // Limites e obras: aprovador_1 (sempre) + aprovador_nivel_0 (organograma)
+      const usuarioTemAlcada = usuario?.perfil === 'aprovador_1'
+        || (empresa?.modelo_aprovacao === 'organograma' && usuario?.perfil === 'aprovador_nivel_0')
+      if (usuarioTemAlcada) {
         promessas.push(
           supabase.from('aprovador_limites').select('tipo_item, valor_limite').eq('usuario_id', usuario.id),
           supabase.from('aprovador_obras').select('obra_id').eq('usuario_id', usuario.id),
@@ -144,7 +157,7 @@ function UsuarioModal({ mode, empresa, obras, usuario, onSalvar, onFechar }) {
         })
       }
 
-      if (usuario?.perfil === 'aprovador_1') {
+      if (usuarioTemAlcada) {
         const lim = results[1]?.data ?? []
         const obr = results[2]?.data ?? []
         const seed = { ...LIMITES_INICIAIS }
@@ -192,7 +205,7 @@ function UsuarioModal({ mode, empresa, obras, usuario, onSalvar, onFechar }) {
   const nascimentoValido = !!pax.nascimento
   // Aprovador N1: alçadas obrigatórias E pelo menos 1 obra vinculada.
   const podeSalvar = (isEdit || form.email) && form.nome && form.telefone && cpfValido && nascimentoValido &&
-    (!isAprovador1 || (limitesValidos && obrasSel.size > 0)) && !carregando
+    (!temAlcada || (limitesValidos && obrasSel.size > 0)) && !carregando
 
   function setPaxField(k, v) { setPax(prev => ({ ...prev, [k]: v })) }
 
@@ -219,7 +232,7 @@ function UsuarioModal({ mode, empresa, obras, usuario, onSalvar, onFechar }) {
         body.email      = form.email
         body.empresa_id = empresa.id
       }
-      if (isAprovador1) {
+      if (temAlcada) {
         body.limites = TIPOS_ITEM.map(t => ({
           tipo_item:    t.value,
           valor_limite: limites[t.value].ilimitado ? null : parseValor(limites[t.value].valor),
@@ -273,7 +286,7 @@ function UsuarioModal({ mode, empresa, obras, usuario, onSalvar, onFechar }) {
         <div>
           <label className="label">Perfil *</label>
           <div className="space-y-2 mt-1">
-            {PERFIS.map(p => (
+            {perfisDisponiveis.map(p => (
               <label key={p.value} className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors"
                 style={{ borderColor: form.perfil === p.value ? '#C0186A' : '#E5E7EB', background: form.perfil === p.value ? '#fdf2f8' : 'white' }}>
                 <input type="radio" name="perfil" value={p.value} checked={form.perfil === p.value}
@@ -326,7 +339,7 @@ function UsuarioModal({ mode, empresa, obras, usuario, onSalvar, onFechar }) {
           </div>
         </div>
 
-        {isAprovador1 && (
+        {temAlcada && (
           <div className="space-y-3 pt-2 border-t" style={{ borderColor: '#F3F4F6' }}>
             <div>
               <label className="label flex items-center gap-1.5"><Wallet size={13} /> Alçadas de aprovação *</label>
@@ -498,14 +511,16 @@ function EmpresaDetalhe({ empresa, onVoltar, onExcluirEmpresa }) {
   }
 
   const perfilLabel = {
-    aprovador_1: 'Aprovador N1',
-    aprovador_2: 'Aprovador N2',
-    solicitante: 'Solicitante',
+    aprovador_nivel_0: 'Aprovador N0',
+    aprovador_1:       'Aprovador N1',
+    aprovador_2:       'Aprovador N2',
+    solicitante:       'Solicitante',
   }
   const perfilColor = {
-    aprovador_1: 'bg-amber-100 text-amber-700',
-    aprovador_2: 'bg-orange-100 text-orange-700',
-    solicitante: 'bg-blue-100 text-blue-700',
+    aprovador_nivel_0: 'bg-yellow-100 text-yellow-700',
+    aprovador_1:       'bg-amber-100 text-amber-700',
+    aprovador_2:       'bg-orange-100 text-orange-700',
+    solicitante:       'bg-blue-100 text-blue-700',
   }
 
   return (

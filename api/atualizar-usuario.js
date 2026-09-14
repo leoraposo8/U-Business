@@ -28,8 +28,9 @@ export const config = { runtime: 'nodejs', maxDuration: 30 }
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-const PERFIS_VALIDOS = ['admin_agencia', 'agente', 'aprovador_1', 'aprovador_2', 'solicitante']
+const PERFIS_VALIDOS = ['admin_agencia', 'agente', 'aprovador_nivel_0', 'aprovador_1', 'aprovador_2', 'solicitante']
 const TIPOS_ITEM     = ['aereo', 'rodoviario', 'hospedagem']
+const PERFIS_COM_ALCADA = new Set(['aprovador_1', 'aprovador_nivel_0'])
 
 function normalizaCpf(cpf) {
   if (!cpf) return null
@@ -90,12 +91,12 @@ export default async function handler(req, res) {
     .from('perfis').select('id, empresa_id, passageiro_id').eq('id', user_id).single()
   if (alvoErr || !alvo) { res.status(404).json({ detail: 'Usuario nao encontrado' }); return }
 
-  // ─── VALIDAÇÃO ESPECÍFICA DE APROVADOR_1 ─────────────────────────────────
+  // ─── VALIDAÇÃO ESPECÍFICA DE APROVADORES COM ALCADA ──────────────────────
   let limitesLimpos = null
   let obrasLimpas   = null
-  if (perfil === 'aprovador_1') {
+  if (PERFIS_COM_ALCADA.has(perfil)) {
     if (!alvo.empresa_id) {
-      res.status(400).json({ detail: 'aprovador_1 precisa pertencer a uma empresa' }); return
+      res.status(400).json({ detail: `${perfil} precisa pertencer a uma empresa` }); return
     }
     if (!Array.isArray(limites) || limites.length !== TIPOS_ITEM.length) {
       res.status(400).json({ detail: `limites deve conter exatamente ${TIPOS_ITEM.length} entradas (uma por tipo_item)` }); return
@@ -180,7 +181,7 @@ export default async function handler(req, res) {
     if (updErr) throw updErr
 
     // 3. Sincronia alçadas / obras.
-    if (perfil !== 'aprovador_1') {
+    if (!PERFIS_COM_ALCADA.has(perfil)) {
       await admin.from('aprovador_limites').delete().eq('usuario_id', user_id)
       await admin.from('aprovador_obras').delete().eq('usuario_id', user_id)
     } else {
