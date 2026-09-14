@@ -44,7 +44,9 @@ export async function resolverAprovador(supabase, { empresaId, obraId, solicitan
   const adId      = solRes.data?.aprovador_direto_id
 
   // debug: veja no DevTools -> Console
-  console.log('[resolverAprovador]', { empresaId, obraId, solicitanteId, modelo, perfilSol, adId })
+  console.log('[resolverAprovador]',
+    JSON.stringify({ empresaId, obraId, solicitanteId, modelo, perfilSol, adId,
+      solRes_error: solRes.error?.message, solRes_data: solRes.data }))
 
   if (modelo === 'organograma') {
     // Nivel_2 criando: auto-aprova
