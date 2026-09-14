@@ -456,9 +456,12 @@ export default function NovaDemanda() {
 
       // Roteia o aprovador ja na criacao. Modelo alcada usa aprovador do CC;
       // modelo organograma usa hierarquia (nivel depende do perfil do solicitante).
-      const { aprovadorId: aprovadorInicial, nivel: nivelInicial } = await resolverAprovador(supabase, {
+      const rr = await resolverAprovador(supabase, {
         empresaId: empresaFinal, obraId: form.obra_id || null, solicitanteId: perfil.id,
       })
+      const aprovadorInicial = rr.aprovadorId
+      const nivelInicial     = rr.nivel
+      console.log('[NovaDemanda] resolverAprovador retornou:', JSON.stringify(rr))
 
       const base = {
         empresa_id: empresaFinal,
@@ -468,6 +471,7 @@ export default function NovaDemanda() {
         aprovador_id: aprovadorInicial,           // pode ser null se empresa sem aprovador
         proximo_aprovador_nivel: nivelInicial,    // 0/1/2 ou null (auto-aprovar nivel_2)
       }
+      console.log('[NovaDemanda] base pra insert:', JSON.stringify(base))
 
       let demandas = []
 
