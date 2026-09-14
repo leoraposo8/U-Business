@@ -450,7 +450,16 @@ export default function DetalheDemanda() {
   // o N2 quando escalado. Admin_agencia continua podendo aprovar tudo por
   // convenção (fallback operacional).
   const souAprovadorDaDemanda = perfil?.id && demanda.aprovador_id === perfil.id
-  const podAprovar = demanda.status === 'aguardando_aprovacao' && (souAprovadorDaDemanda || isAgencia)
+  // No organograma, qualquer aprovador do nivel esperado pode aprovar (nao so o designado).
+  const modeloOrgDemanda = demanda.empresas?.modelo_aprovacao === 'organograma'
+  const meuNivelPerfil = perfil?.perfil === 'aprovador_nivel_0' ? 0
+                       : perfil?.perfil === 'aprovador_1'       ? 1
+                       : perfil?.perfil === 'aprovador_2'       ? 2 : null
+  const souAprovadorDoNivel = modeloOrgDemanda
+    && meuNivelPerfil !== null
+    && demanda.proximo_aprovador_nivel === meuNivelPerfil
+  const podAprovar = demanda.status === 'aguardando_aprovacao'
+    && (souAprovadorDaDemanda || souAprovadorDoNivel || isAgencia)
   const podeRevisarOpcoes = isAgencia && demanda.status === 'aguardando_aprovacao'
   const podeExcluir = demanda.status === 'aguardando_opcoes' && (perfil?.id === demanda.solicitante_id || isAprovador)
   const podeDesaprovar = (souAprovadorDaDemanda || isAgencia) && demanda.status === 'aprovado' && demanda.status !== 'emitido'
