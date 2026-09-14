@@ -1,12 +1,154 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import StatusBadge from '../../components/ui/StatusBadge'
 import TipoBadge from '../../components/ui/TipoBadge'
-import { Loader2, Send, Plus, X, Image, MapPin, Calendar, MessageSquare } from 'lucide-react'
+import { Loader2, Send, Plus, X, Image, MapPin, Calendar, MessageSquare, Wand2 } from 'lucide-react'
 import { fmtTs, fmtData, fmtDataCurta } from '../../lib/datetime'
 import { resolverAprovador } from '../../lib/aprovador'
+
+// Config do proxy da IA de interpretacao de print (mesma da NovaProposta).
+const API_BASE = import.meta.env.VITE_PROPOSTA_API_URL || '/proposta-api'
+const API_KEY  = import.meta.env.VITE_PROPOSTA_API_KEY || ''
+
+// Converte "dd/mm/aa" ou "dd/mm/aaaa" -> "yyyy-mm-dd". Vazio se falhar.
+function ddmmaaToIso(s) {
+  if (!s) return ''
+  const m = String(s).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/)
+  if (!m) return ''
+  let [_, d, mo, y] = m
+  if (y.length === 2) y = '20' + y
+  return `${y.padStart(4, '0')}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`
+}
+// Limpa "23:45 +1" -> "23:45"
+function hhmmClean(s) {
+  if (!s) return ''
+  const m = String(s).match(/(\d{1,2}):(\d{2})/)
+  return m ? `${m[1].padStart(2, '0')}:${m[2]}` : ''
+}
+// Converte "18.000,00" ou "18000.50" -> number.
+function parseNum(s) {
+  if (s === '' || s == null) return null
+  const n = parseFloat(String(s).replace(/\s/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'))
+  return Number.isNaN(n) ? null : n
+}
+
+// Componente que le o print via IA e devolve os campos (mesmo padrao da NovaProposta).
+function PrintDropzone({ onCampos }) {
+  const [lendo, setLendo] = useState(false)
+  const [erro, setErro]   = useState('')
+  const ref = useRef(null)
+  async function ler(file) {
+    if (!file) return
+    setLendo(true); setErro('')
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch(`${API_BASE}/interpretar-print`, {
+        method: 'POST', headers: { 'X-API-Key': API_KEY }, body: fd,
+      })
+      if (!res.ok) {
+        let m = `Erro ${res.status}`
+        try { const j = await res.json(); m += ` · ${j.detail || ''}` } catch { /* ignore */ }
+        throw new Error(m)
+      }
+      const { campos } = await res.json()
+      onCampos(campos)
+    } catch (e) { setErro(e.message || 'falhou') }
+    finally { setLendo(false) }
+  }
+  function onPaste(ev) {
+    const items = ev.clipboardData && ev.clipboardData.items
+    if (!items) return
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i]
+      if (it.type && it.type.indexOf('image') === 0) {
+        const f = it.getAsFile()
+        if (f) { ev.preventDefault(); ler(f) }
+        return
+      }
+    }
+  }
+  return (
+    <div>
+      <input ref={ref} type="file" accept="image/*" className="hidden"
+        onChange={ev => { const f = ev.target.files && ev.target.files[0]; if (f) ler(f); ev.target.value = '' }} />
+      <div tabIndex={0} onPaste={onPaste} onClick={() => ref.current && ref.current.click()}
+        onDragOver={ev => ev.preventDefault()}
+        onDrop={ev => { ev.preventDefault(); const f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0]; if (f) ler(f) }}
+        className="rounded-lg border border-dashed text-center text-xs py-3 px-3 cursor-pointer flex items-center justify-center gap-2"
+        style={{ borderColor: '#E5C4D6', color: '#9A6B85', background: '#FDF6FA' }}>
+        <Wand2 size={13} />
+        {lendo ? 'Lendo o print…' : 'Ler print da reserva (RF): clique aqui e cole, ou arraste a imagem'}
+      </div>
+      {erro && <p className="text-xs mt-1" style={{ color: '#B91C1C' }}>Print: {erro}</p>}
+    </div>
+  )
+}
+
+// Mapeia o retorno da IA (campos da NovaProposta) para o form do agente (opcao).
+// Retorna um patch pra dar merge no state da opcao.
+function campoParaOpcao(campos, temVolta) {
+  const patch = {}
+  if (campos.cia)     patch.companhia = campos.cia
+  if (campos.bagagem) patch.descricao = `Bagagem: ${campos.bagagem}`
+
+  const trechos = Array.isArray(campos.trechos) ? campos.trechos : []
+  if (trechos.length > 0) {
+    const primeiro = trechos[0]
+    patch.saida_data   = ddmmaaToIso(primeiro.data)
+    patch.saida_hora   = hhmmClean(primeiro.partida)
+    // Se demanda so ida ou so 1 trecho: chegada = ultimo trecho
+    // Se ida-e-volta: assume que a metade e ida e metade e volta.
+    if (!temVolta || trechos.length === 1) {
+      const ultimo = trechos[trechos.length - 1]
+      patch.chegada_data = ddmmaaToIso(ultimo.data)
+      patch.chegada_hora = hhmmClean(ultimo.chegada)
+      // Escalas (se mais de 1 trecho)
+      if (trechos.length > 1) {
+        patch.escalas = trechos.slice(0, -1)
+          .map(t => `${t.destino || ''}${t.conexao && t.conexao !== 'Direto' ? ` (${t.conexao})` : ''}`)
+          .filter(Boolean).join(' → ')
+      }
+    } else {
+      // ida = 1a metade; volta = 2a metade (heuristica)
+      const meio = Math.ceil(trechos.length / 2)
+      const idaFim  = trechos[meio - 1]
+      patch.chegada_data = ddmmaaToIso(idaFim.data)
+      patch.chegada_hora = hhmmClean(idaFim.chegada)
+      const voltaIni = trechos[meio]
+      const voltaFim = trechos[trechos.length - 1]
+      if (voltaIni) {
+        patch.volta_saida_data = ddmmaaToIso(voltaIni.data)
+        patch.volta_saida_hora = hhmmClean(voltaIni.partida)
+      }
+      if (voltaFim) {
+        patch.volta_chegada_data = ddmmaaToIso(voltaFim.data)
+        patch.volta_chegada_hora = hhmmClean(voltaFim.chegada)
+      }
+      // Escalas: se ida tem mais de 1 trecho, ou volta idem, junta
+      const escIda = trechos.slice(0, meio - 1).map(t => t.destino || '').filter(Boolean).join(' → ')
+      const escVolta = trechos.slice(meio, -1).map(t => t.destino || '').filter(Boolean).join(' → ')
+      const pedacos = [
+        escIda   ? `Ida: ${escIda}`     : '',
+        escVolta ? `Volta: ${escVolta}` : '',
+      ].filter(Boolean)
+      if (pedacos.length) patch.escalas = pedacos.join(' · ')
+    }
+  }
+
+  // Preco em BRL: (tarifa + taxas) * cambio, ambos em USD (ou moeda original)
+  const tarifa = parseNum(campos.tarifa)
+  const taxas  = parseNum(campos.taxas)
+  const cambio = parseNum(campos.cambio) || 1
+  if (tarifa != null || taxas != null) {
+    const totalBrl = ((tarifa || 0) + (taxas || 0)) * cambio
+    if (totalBrl > 0) patch.preco_venda = totalBrl.toFixed(2).replace('.', ',')
+  }
+
+  return patch
+}
 
 // fmt -> use fmtData from lib/datetime
 
@@ -518,11 +660,20 @@ export default function FilaOpcoes() {
                   {demandaAtiva.tipo === 'posvenda' ? (
                     <PostVendaOpcaoForm op={op} idx={idx} setOpcao={setOpcao} demanda={demandaAtiva} />
                   ) : (
-                  <div>
-                    <label className="label">Companhia *</label>
-                    <input className="input" placeholder="Ex: LATAM, Gontijo..."
-                      value={op.companhia} onChange={e => setOpcao(idx, 'companhia', e.target.value)} />
-                  </div>
+                  <>
+                    {/* Leitor de print (RF): preenche companhia/horarios/preco automaticamente */}
+                    <div className="mb-3">
+                      <PrintDropzone onCampos={campos => {
+                        const patch = campoParaOpcao(campos, !!demandaAtiva.data_volta)
+                        setOpcoes(prev => prev.map((o, i) => i === idx ? { ...o, ...patch } : o))
+                      }} />
+                    </div>
+                    <div>
+                      <label className="label">Companhia *</label>
+                      <input className="input" placeholder="Ex: LATAM, Gontijo..."
+                        value={op.companhia} onChange={e => setOpcao(idx, 'companhia', e.target.value)} />
+                    </div>
+                  </>
                   )}
 
                   {/* Dropdown de trecho — so aparece se a demanda for ida-e-volta */}
