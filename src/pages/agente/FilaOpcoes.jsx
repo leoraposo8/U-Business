@@ -279,6 +279,48 @@ export default function FilaOpcoes() {
   const [opcoes, setOpcoes]     = useState([OPCAO_VAZIA()])
   const [enviando, setEnviando] = useState(false)
   const [carregandoOpcoes, setCarregandoOpcoes] = useState(false)
+  const [lendoPrint, setLendoPrint] = useState(false)
+
+  // Paste global: Ctrl+V com imagem na area de trabalho preenche a ultima opcao
+  // (ou a que foi tocada por ultimo, se implementar isso depois).
+  useEffect(() => {
+    if (!demandaAtiva || demandaAtiva.tipo === 'posvenda') return
+    async function onPaste(ev) {
+      // ignora paste em campos de texto (nao queremos capturar Ctrl+V em textarea/input)
+      const t = ev.target
+      const tag = t?.tagName
+      const editable = tag === 'INPUT' || tag === 'TEXTAREA' || t?.isContentEditable
+      if (editable) return
+      const items = ev.clipboardData?.items
+      if (!items) return
+      const item = Array.from(items).find(i => i.type?.startsWith('image/'))
+      if (!item) return
+      const file = item.getAsFile()
+      if (!file) return
+      ev.preventDefault()
+      setLendoPrint(true)
+      try {
+        const fd = new FormData()
+        fd.append('file', file)
+        const res = await fetch(`${API_BASE}/interpretar-print`, {
+          method: 'POST', headers: { 'X-API-Key': API_KEY }, body: fd,
+        })
+        if (!res.ok) throw new Error(`Erro ${res.status}`)
+        const { campos } = await res.json()
+        const patch = campoParaOpcao(campos, !!demandaAtiva.data_volta)
+        setOpcoes(prev => {
+          const idx = prev.length - 1
+          return prev.map((o, i) => i === idx ? { ...o, ...patch } : o)
+        })
+      } catch (e) {
+        alert('Falha ao ler print: ' + (e.message || 'desconhecido'))
+      } finally {
+        setLendoPrint(false)
+      }
+    }
+    document.addEventListener('paste', onPaste)
+    return () => document.removeEventListener('paste', onPaste)
+  }, [demandaAtiva])
 
   useEffect(() => {
     const SELECT = `
@@ -636,7 +678,14 @@ export default function FilaOpcoes() {
               </div>
             )}
 
-            <h2 className="text-sm font-semibold mb-3" style={{ color: '#1A1614' }}>Opções de viagem</h2>
+            <h2 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: '#1A1614' }}>
+              Opções de viagem
+              {lendoPrint && (
+                <span className="text-xs font-normal flex items-center gap-1" style={{ color: '#C0186A' }}>
+                  <Loader2 size={12} className="animate-spin" /> lendo print da área de transferência…
+                </span>
+              )}
+            </h2>
 
             {carregandoOpcoes ? (
               <div className="flex items-center gap-2 text-sm py-8 justify-center" style={{ color: '#9CA3AF' }}>
