@@ -256,7 +256,8 @@ export default function DetalheDemanda() {
   const [loading, setLoading]     = useState(true)
 
   // Aprovação
-  const [opcaoSelecionada, setOpcaoSelecionada] = useState(null)
+  const [opcaoSelecionada, setOpcaoSelecionada]       = useState(null)   // opcao ida ou combo
+  const [opcaoVoltaSelecionada, setOpcaoVoltaSelecionada] = useState(null)   // so quando modo complementar
   const [tipoEmissaoSel, setTipoEmissaoSel]     = useState(null)
   const [showConfirmAprovar, setShowConfirmAprovar] = useState(false)
 
@@ -385,8 +386,10 @@ export default function DetalheDemanda() {
       }
 
       // Registra a decisao do aprovador atual (endosso ou aprovacao final).
+      // Quando modo complementar (ida + volta separadas), grava tb opcao_volta_id.
       await supabase.from('aprovacoes').insert({
         demanda_id: id, opcao_id: opcaoSelecionada,
+        opcao_volta_id: opcaoVoltaSelecionada || null,
         aprovador_id: perfil.id, decisao: 'aprovado',
         comentario: motivoEscalacao ? `${tipoEmissaoSel} — ${motivoEscalacao}` : tipoEmissaoSel,
       })
@@ -400,7 +403,7 @@ export default function DetalheDemanda() {
         comentario: motivoEscalacao,
       })
 
-      setShowConfirmAprovar(false); setOpcaoSelecionada(null); setTipoEmissaoSel(null)
+      setShowConfirmAprovar(false); setOpcaoSelecionada(null); setOpcaoVoltaSelecionada(null); setTipoEmissaoSel(null)
       await carregar()
     } finally { setSalvando(false) }
   }
@@ -506,8 +509,13 @@ export default function DetalheDemanda() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
             <h2 className="text-lg font-semibold mb-2" style={{ color: '#1A1614' }}>Confirmar aprovação</h2>
             <p className="text-sm mb-1" style={{ color: '#6B7280' }}>
-              Opção: <strong>{opcoes.find(o => o.id === opcaoSelecionada)?.companhia}</strong>
+              Ida: <strong>{opcoes.find(o => o.id === opcaoSelecionada)?.companhia}</strong>
             </p>
+            {opcaoVoltaSelecionada && (
+              <p className="text-sm mb-1" style={{ color: '#6B7280' }}>
+                Volta: <strong>{opcoes.find(o => o.id === opcaoVoltaSelecionada)?.companhia}</strong>
+              </p>
+            )}
             <p className="text-sm mb-5" style={{ color: '#6B7280' }}>
               Emissão: <strong>{tipoEmissaoSel === 'milha' ? '✦ Milha' : '🎫 Tarifado'}</strong>
             </p>
@@ -615,26 +623,66 @@ export default function DetalheDemanda() {
                 </p>
               )}
 
-              <div className="space-y-3">
-                {opcoes.map(op => (
-                  <OpcaoCard key={op.id} opcao={op}
-                    selecionada={opcaoSelecionada === op.id || aprovacao?.opcao_id === op.id}
-                    podeSel={podAprovar}
-                    onSelecionar={id => {
-                      setOpcaoSelecionada(id === opcaoSelecionada ? null : id)
-                      setTipoEmissaoSel(null)
-                    }} />
-                ))}
-              </div>
+              {(() => {
+                // Modo complementar = todas as opcoes sao 'ida' ou 'volta' (ninguem combo)
+                const trechos = opcoes.map(o => o.trecho || 'ida_e_volta')
+                const modoComplementar = trechos.length > 0 && trechos.every(t => t === 'ida' || t === 'volta')
+                if (modoComplementar) {
+                  const opcoesIda   = opcoes.filter(o => o.trecho === 'ida')
+                  const opcoesVolta = opcoes.filter(o => o.trecho === 'volta')
+                  return (
+                    <>
+                      <p className="text-xs font-semibold uppercase tracking-wide mt-1 mb-2" style={{ color: '#6B7280' }}>Escolha uma ida</p>
+                      <div className="space-y-3 mb-4">
+                        {opcoesIda.map(op => (
+                          <OpcaoCard key={op.id} opcao={op}
+                            selecionada={opcaoSelecionada === op.id || aprovacao?.opcao_id === op.id}
+                            podeSel={podAprovar}
+                            onSelecionar={id => { setOpcaoSelecionada(id === opcaoSelecionada ? null : id); setTipoEmissaoSel(null) }} />
+                        ))}
+                      </div>
+                      <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#6B7280' }}>Escolha uma volta</p>
+                      <div className="space-y-3">
+                        {opcoesVolta.map(op => (
+                          <OpcaoCard key={op.id} opcao={op}
+                            selecionada={opcaoVoltaSelecionada === op.id || aprovacao?.opcao_volta_id === op.id}
+                            podeSel={podAprovar}
+                            onSelecionar={id => { setOpcaoVoltaSelecionada(id === opcaoVoltaSelecionada ? null : id); setTipoEmissaoSel(null) }} />
+                        ))}
+                      </div>
+                    </>
+                  )
+                }
+                return (
+                  <div className="space-y-3">
+                    {opcoes.map(op => (
+                      <OpcaoCard key={op.id} opcao={op}
+                        selecionada={opcaoSelecionada === op.id || aprovacao?.opcao_id === op.id}
+                        podeSel={podAprovar}
+                        onSelecionar={id => { setOpcaoSelecionada(id === opcaoSelecionada ? null : id); setTipoEmissaoSel(null) }} />
+                    ))}
+                  </div>
+                )
+              })()}
 
               {/* Tipo emissão + Confirmar — aparece só quando opção está selecionada */}
-              {podAprovar && opcaoSelecionada && (
+              {podAprovar && opcaoSelecionada && (() => {
+                const trechos = opcoes.map(o => o.trecho || 'ida_e_volta')
+                const modoComplementar = trechos.length > 0 && trechos.every(t => t === 'ida' || t === 'volta')
+                if (modoComplementar && !opcaoVoltaSelecionada) return null
+                return true
+              })() && (
                 <div className="mt-4 p-4 rounded-xl border" style={{ borderColor: '#C0186A', background: '#fdf2f8' }}>
                   <p className="text-xs font-semibold mb-3" style={{ color: '#C0186A' }}>Como emitir?</p>
                   {(() => {
-                    const op = opcoes.find(o => o.id === opcaoSelecionada)
-                    const temMilha = !!op?.preco_milha
-                    const temTarifado = !!op?.preco_venda
+                    const opIda   = opcoes.find(o => o.id === opcaoSelecionada)
+                    const opVolta = opcaoVoltaSelecionada ? opcoes.find(o => o.id === opcaoVoltaSelecionada) : null
+                    // Modo complementar exige tipo presente NAS DUAS opcoes; senao, so a opcao unica.
+                    const temTarifado = !!opIda?.preco_venda && (opVolta ? !!opVolta?.preco_venda : true)
+                    const temMilha    = !!opIda?.preco_milha && (opVolta ? !!opVolta?.preco_milha : true)
+                    // Preco total (soma se ha volta)
+                    const precoTarifado = (Number(opIda?.preco_venda) || 0) + (Number(opVolta?.preco_venda) || 0)
+                    const precoMilha    = (Number(opIda?.preco_milha) || 0) + (Number(opVolta?.preco_milha) || 0)
                     // If only one type exists, auto-select it
                     const tipoEfetivo = tipoEmissaoSel ?? (temTarifado && !temMilha ? 'tarifado' : temMilha && !temTarifado ? 'milha' : null)
                     return (
@@ -648,7 +696,7 @@ export default function DetalheDemanda() {
                                 background: tipoEfetivo === 'tarifado' ? '#C0186A' : 'white',
                                 color: tipoEfetivo === 'tarifado' ? 'white' : '#1A1614',
                               }}>
-                              🎫 Tarifado — {moeda(op?.preco_venda)}
+                              🎫 Tarifado — {moeda(precoTarifado)}{opVolta ? ' (ida+volta)' : ''}
                             </button>
                           )}
                           {temMilha && (
@@ -659,7 +707,7 @@ export default function DetalheDemanda() {
                                 background: tipoEfetivo === 'milha' ? '#5B2D8E' : 'white',
                                 color: tipoEfetivo === 'milha' ? 'white' : '#1A1614',
                               }}>
-                              ✦ Milha — {moeda(op?.preco_milha)}
+                              ✦ Milha — {moeda(precoMilha)}{opVolta ? ' (ida+volta)' : ''}
                             </button>
                           )}
                         </div>

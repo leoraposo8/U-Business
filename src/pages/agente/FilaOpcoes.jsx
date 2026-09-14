@@ -300,6 +300,26 @@ export default function FilaOpcoes() {
         alert(`Opção ${faltando + 1}: preencha saída (data+hora) e chegada (data+hora) do(s) trecho(s) selecionado(s).`)
         return
       }
+
+      // Regra de mistura em demanda ida-e-volta:
+      // (a) combo (todas 'ida_e_volta') — o aprovador escolhe 1 opcao
+      // (b) separadas (mix de 'ida' e 'volta', pelo menos 1 de cada) — aprovador escolhe par
+      // Nao pode misturar combo com separadas.
+      if (temVolta) {
+        const trechos = validas.map(o => o.trecho || 'ida_e_volta')
+        const temCombo = trechos.some(t => t === 'ida_e_volta')
+        const temIda   = trechos.some(t => t === 'ida')
+        const temVoltaOp = trechos.some(t => t === 'volta')
+        const modoSeparado = (temIda || temVoltaOp) && !temCombo
+        if (temCombo && (temIda || temVoltaOp)) {
+          alert('Voce misturou opcoes "Ida e volta (combo)" com "so ida" / "so volta". Escolha um dos dois modos — nao mistura.')
+          return
+        }
+        if (modoSeparado && !(temIda && temVoltaOp)) {
+          alert('Modo separado precisa de pelo menos 1 opcao de "so ida" E 1 de "so volta". Complete os dois lados ou volte pra combo.')
+          return
+        }
+      }
     }
     setEnviando(true)
     const editando = demandaAtiva.status === 'aguardando_aprovacao'
