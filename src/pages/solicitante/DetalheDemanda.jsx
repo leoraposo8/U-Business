@@ -454,9 +454,22 @@ export default function DetalheDemanda() {
 
   async function excluirDemanda() {
     setExcluindo(true)
-    await supabase.from('demanda_historico').delete().eq('demanda_id', id)
-    await supabase.from('demandas').delete().eq('id', id)
-    navigate('/app/demandas')
+    try {
+      // Ordem importa (FKs). Como so permitimos excluir em 'aguardando_opcoes',
+      // opcoes/aprovacoes/bilhetes provavelmente estao vazios — mas deletamos por seguranca.
+      await supabase.from('bilhetes').delete().eq('demanda_id', id)
+      await supabase.from('aprovacoes').delete().eq('demanda_id', id)
+      await supabase.from('opcoes').delete().eq('demanda_id', id)
+      await supabase.from('demanda_passageiros').delete().eq('demanda_id', id)
+      await supabase.from('demanda_historico').delete().eq('demanda_id', id)
+      const { error } = await supabase.from('demandas').delete().eq('id', id)
+      if (error) throw error
+      navigate('/app/demandas')
+    } catch (err) {
+      alert('Erro ao excluir: ' + err.message)
+    } finally {
+      setExcluindo(false)
+    }
   }
 
   if (loading) return <div className="flex items-center justify-center h-full py-32"><Loader2 size={28} className="animate-spin text-gray-300" /></div>
