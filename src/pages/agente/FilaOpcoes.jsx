@@ -12,6 +12,7 @@ import { resolverAprovador } from '../../lib/aprovador'
 
 const OPCAO_VAZIA = () => ({
   descricao: '', companhia: '',
+  trecho: 'ida_e_volta',   // 'ida' | 'volta' | 'ida_e_volta'
   saida_data: '', saida_hora: '',
   chegada_data: '', chegada_hora: '',
   volta_saida_data: '', volta_saida_hora: '',
@@ -201,6 +202,7 @@ export default function FilaOpcoes() {
     const [volta_chegada_data, volta_chegada_hora] = split(row.horario_volta_chegada)
     return {
       descricao: row.descricao ?? '', companhia: row.companhia ?? '',
+      trecho: row.trecho ?? 'ida_e_volta',
       saida_data, saida_hora,
       chegada_data, chegada_hora,
       volta_saida_data, volta_saida_hora,
@@ -221,7 +223,7 @@ export default function FilaOpcoes() {
       setCarregandoOpcoes(true)
       const { data } = await supabase
         .from('opcoes')
-        .select('id, descricao, companhia, horario_ida, horario_volta, horario_volta_saida, horario_volta_chegada, preco_venda, preco_milha, reembolso, remarcacao, imagem_print_url')
+        .select('id, descricao, companhia, trecho, horario_ida, horario_volta, horario_volta_saida, horario_volta_chegada, preco_venda, preco_milha, reembolso, remarcacao, imagem_print_url')
         .eq('demanda_id', d.id)
         .order('id', { ascending: true })
       const mapeadas = (data ?? []).map(dbToForm)
@@ -245,14 +247,18 @@ export default function FilaOpcoes() {
           imagem_print_url = publicUrl
         }
       }
+      const trecho = op.trecho || 'ida_e_volta'
+      const querIda   = trecho === 'ida' || trecho === 'ida_e_volta'
+      const querVolta = trecho === 'volta' || trecho === 'ida_e_volta'
       return {
         demanda_id: demandaAtiva.id,
         descricao: op.descricao || null,
         companhia: op.companhia || null,
-        horario_ida: op.saida_data ? `${op.saida_data} ${op.saida_hora || '00:00'}` : null,
-        horario_volta: op.chegada_data ? `${op.chegada_data} ${op.chegada_hora || '00:00'}` : null,
-        horario_volta_saida: op.volta_saida_data ? `${op.volta_saida_data} ${op.volta_saida_hora || '00:00'}` : null,
-        horario_volta_chegada: op.volta_chegada_data ? `${op.volta_chegada_data} ${op.volta_chegada_hora || '00:00'}` : null,
+        trecho,
+        horario_ida:           querIda   && op.saida_data         ? `${op.saida_data} ${op.saida_hora || '00:00'}` : null,
+        horario_volta:         querIda   && op.chegada_data       ? `${op.chegada_data} ${op.chegada_hora || '00:00'}` : null,
+        horario_volta_saida:   querVolta && op.volta_saida_data   ? `${op.volta_saida_data} ${op.volta_saida_hora || '00:00'}` : null,
+        horario_volta_chegada: querVolta && op.volta_chegada_data ? `${op.volta_chegada_data} ${op.volta_chegada_hora || '00:00'}` : null,
         preco_venda: op.preco_venda ? parseFloat(op.preco_venda.toString().replace(',', '.')) : null,
         preco_milha: op.preco_milha ? parseFloat(op.preco_milha.toString().replace(',', '.')) : null,
         reembolso: op.reembolso || null,
@@ -272,13 +278,21 @@ export default function FilaOpcoes() {
         : 'Adicione ao menos uma opção com companhia.')
       return
     }
-    // Aereo/rodo/hosp/pacote: saida (data+hora) e chegada (data+hora) sao obrigatorias
+    // Aereo/rodo/hosp/pacote: saida e chegada (data+hora) sao obrigatorias
+    // do lado que o trecho da opcao cobre (ida, volta, ou ambos).
     if (!isPosvenda) {
-      const faltando = validas.findIndex(o =>
-        !o.saida_data || !o.saida_hora || !o.chegada_data || !o.chegada_hora
-      )
+      const faltando = validas.findIndex(o => {
+        const trecho = o.trecho || 'ida_e_volta'
+        if (trecho === 'ida' || trecho === 'ida_e_volta') {
+          if (!o.saida_data || !o.saida_hora || !o.chegada_data || !o.chegada_hora) return true
+        }
+        if (trecho === 'volta' || trecho === 'ida_e_volta') {
+          if (!o.volta_saida_data || !o.volta_saida_hora || !o.volta_chegada_data || !o.volta_chegada_hora) return true
+        }
+        return false
+      })
       if (faltando !== -1) {
-        alert(`Opção ${faltando + 1}: preencha saída (data+hora) e chegada (data+hora) — obrigatórios.`)
+        alert(`Opção ${faltando + 1}: preencha saída (data+hora) e chegada (data+hora) do(s) trecho(s) selecionado(s).`)
         return
       }
     }
@@ -484,7 +498,21 @@ export default function FilaOpcoes() {
                   </div>
                   )}
 
-                  {demandaAtiva.tipo !== 'posvenda' && (
+                  {/* Dropdown de trecho — so aparece se a demanda for ida-e-volta */}
+                  {demandaAtiva.tipo !== 'posvenda' && demandaAtiva.data_volta && (
+                    <div className="mt-3">
+                      <label className="label">Trecho desta opção *</label>
+                      <select className="input" value={op.trecho || 'ida_e_volta'}
+                        onChange={e => setOpcao(idx, 'trecho', e.target.value)}>
+                        <option value="ida_e_volta">Ida e volta (combo)</option>
+                        <option value="ida">Só ida</option>
+                        <option value="volta">Só volta</option>
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Ida (mostra se trecho=ida ou ida_e_volta; sempre se demanda so tem ida) */}
+                  {demandaAtiva.tipo !== 'posvenda' && (!demandaAtiva.data_volta || op.trecho === 'ida' || op.trecho === 'ida_e_volta' || !op.trecho) && (
                   <div className="grid grid-cols-2 gap-3 mt-3">
                     <div>
                       <label className="label">Saída *</label>
@@ -506,26 +534,25 @@ export default function FilaOpcoes() {
                       </div>
                     </div>
                   </div>
+                  )}
 
-                  )} {/* end !posvenda saída/chegada */}
-
-                  {/* Volta */}
-                  {demandaAtiva.tipo !== 'posvenda' && demandaAtiva.data_volta && (
+                  {/* Volta (mostra se trecho=volta ou ida_e_volta) */}
+                  {demandaAtiva.tipo !== 'posvenda' && demandaAtiva.data_volta && (op.trecho === 'volta' || op.trecho === 'ida_e_volta' || !op.trecho) && (
                     <div className="mt-3 pt-3" style={{ borderTop: '1px solid #F3F4F6' }}>
                       <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: '#9CA3AF' }}>Trecho de volta</p>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="label">Saída (volta)</label>
+                          <label className="label">Saída (volta) *</label>
                           <div className="grid grid-cols-2 gap-2">
-                            <input type="date" className="input" value={op.volta_saida_data} onChange={e => setOpcao(idx, 'volta_saida_data', e.target.value)} />
-                            <input type="time" className="input" value={op.volta_saida_hora} onChange={e => setOpcao(idx, 'volta_saida_hora', e.target.value)} />
+                            <input type="date" className="input" value={op.volta_saida_data} onChange={e => setOpcao(idx, 'volta_saida_data', e.target.value)} required />
+                            <input type="time" className="input" value={op.volta_saida_hora} onChange={e => setOpcao(idx, 'volta_saida_hora', e.target.value)} required />
                           </div>
                         </div>
                         <div>
-                          <label className="label">Chegada (volta)</label>
+                          <label className="label">Chegada (volta) *</label>
                           <div className="grid grid-cols-2 gap-2">
-                            <input type="date" className="input" value={op.volta_chegada_data} onChange={e => setOpcao(idx, 'volta_chegada_data', e.target.value)} />
-                            <input type="time" className="input" value={op.volta_chegada_hora} onChange={e => setOpcao(idx, 'volta_chegada_hora', e.target.value)} />
+                            <input type="date" className="input" value={op.volta_chegada_data} onChange={e => setOpcao(idx, 'volta_chegada_data', e.target.value)} required />
+                            <input type="time" className="input" value={op.volta_chegada_hora} onChange={e => setOpcao(idx, 'volta_chegada_hora', e.target.value)} required />
                           </div>
                         </div>
                       </div>

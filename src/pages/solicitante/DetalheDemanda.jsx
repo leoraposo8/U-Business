@@ -195,9 +195,25 @@ function OpcaoCard({ opcao, selecionada, onSelecionar, podeSel }) {
             <p className="text-sm font-semibold" style={{ color: '#1A1614' }}>{opcao.companhia}</p>
           </div>
           {opcao.descricao && <p className="text-sm mb-1" style={{ color: '#6B7280' }}>{opcao.descricao}</p>}
-          <div className="flex flex-wrap gap-3 text-xs" style={{ color: '#6B7280' }}>
-            {opcao.horario_ida && <span>🛫 {opcao.horario_ida}</span>}
-            {opcao.horario_volta && <span>🛬 {opcao.horario_volta}</span>}
+          {opcao.trecho && opcao.trecho !== 'ida_e_volta' && (
+            <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full mb-1"
+              style={{ background: '#EEF2FF', color: '#4338CA' }}>
+              {opcao.trecho === 'ida' ? 'Só ida' : 'Só volta'}
+            </span>
+          )}
+          <div className="flex flex-col gap-0.5 text-xs" style={{ color: '#6B7280' }}>
+            {(opcao.trecho !== 'volta') && (opcao.horario_ida || opcao.horario_volta) && (
+              <div className="flex gap-3">
+                {opcao.horario_ida   && <span>🛫 Saída: {opcao.horario_ida}</span>}
+                {opcao.horario_volta && <span>🛬 Chegada: {opcao.horario_volta}</span>}
+              </div>
+            )}
+            {(opcao.trecho !== 'ida') && (opcao.horario_volta_saida || opcao.horario_volta_chegada) && (
+              <div className="flex gap-3">
+                {opcao.horario_volta_saida   && <span>🛫 Saída volta: {opcao.horario_volta_saida}</span>}
+                {opcao.horario_volta_chegada && <span>🛬 Chegada volta: {opcao.horario_volta_chegada}</span>}
+              </div>
+            )}
           </div>
           {opcao.reembolso && <p className="text-xs mt-1" style={{ color: '#6B7280' }}>Reembolso: {opcao.reembolso}</p>}
           {opcao.remarcacao && <p className="text-xs mt-0.5" style={{ color: '#6B7280' }}>Remarcação: {opcao.remarcacao}</p>}
