@@ -84,18 +84,21 @@ export default function ListaDemandas() {
       //   - solicitante: só as suas
       if (perfil?.id && !isAgencia) {
         if (isAprovador) {
-          // Organograma: SO nivel_2 e generico (qualquer nivel_2 ve qualquer demanda pendente nivel 2).
-          // Nivel_0 e nivel_1: sempre 1 pessoa especifica (o aprovador designado).
+          // Aprovador ve: (a) demandas designadas a ele, (b) suas proprias
+          // solicitacoes, (c) demandas em que ele ja aprovou/decidiu (historico),
+          // e (d) se nivel_2 no organograma, todas pendentes nivel 2.
+          const { data: hist } = await supabase.from('aprovacoes')
+            .select('demanda_id').eq('aprovador_id', perfil.id)
+          const idsHist = Array.from(new Set((hist ?? []).map(r => r.demanda_id).filter(Boolean)))
           const modeloOrg   = perfil?.empresas?.modelo_aprovacao === 'organograma'
           const soNivel2Gen = modeloOrg && perfil?.perfil === 'aprovador_2'
-          if (soNivel2Gen) {
-            q = q.or(
-              `aprovador_id.eq.${perfil.id},solicitante_id.eq.${perfil.id},` +
-              `and(status.eq.aguardando_aprovacao,proximo_aprovador_nivel.eq.2)`
-            )
-          } else {
-            q = q.or(`aprovador_id.eq.${perfil.id},solicitante_id.eq.${perfil.id}`)
-          }
+          const partes = [
+            `aprovador_id.eq.${perfil.id}`,
+            `solicitante_id.eq.${perfil.id}`,
+          ]
+          if (idsHist.length > 0) partes.push(`id.in.(${idsHist.join(',')})`)
+          if (soNivel2Gen) partes.push(`and(status.eq.aguardando_aprovacao,proximo_aprovador_nivel.eq.2)`)
+          q = q.or(partes.join(','))
         } else {
           q = q.eq('solicitante_id', perfil.id)
         }
