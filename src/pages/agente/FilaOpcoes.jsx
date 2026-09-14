@@ -248,7 +248,9 @@ export default function FilaOpcoes() {
           imagem_print_url = publicUrl
         }
       }
-      const trecho = op.trecho || 'ida_e_volta'
+      // Se a demanda e so ida, forca trecho='ida' — usuario nem viu o dropdown
+      const temVolta = !!demandaAtiva.data_volta
+      const trecho = temVolta ? (op.trecho || 'ida_e_volta') : 'ida'
       const querIda   = trecho === 'ida' || trecho === 'ida_e_volta'
       const querVolta = trecho === 'volta' || trecho === 'ida_e_volta'
       return {
@@ -280,10 +282,12 @@ export default function FilaOpcoes() {
       return
     }
     // Aereo/rodo/hosp/pacote: saida e chegada (data+hora) sao obrigatorias
-    // do lado que o trecho da opcao cobre (ida, volta, ou ambos).
+    // do lado que o trecho da opcao cobre (ida, volta, ou ambos). Se a demanda
+    // e so ida (sem data_volta), forca trecho='ida' independente do state.
     if (!isPosvenda) {
+      const temVolta = !!demandaAtiva.data_volta
       const faltando = validas.findIndex(o => {
-        const trecho = o.trecho || 'ida_e_volta'
+        const trecho = temVolta ? (o.trecho || 'ida_e_volta') : 'ida'
         if (trecho === 'ida' || trecho === 'ida_e_volta') {
           if (!o.saida_data || !o.saida_hora || !o.chegada_data || !o.chegada_hora) return true
         }
