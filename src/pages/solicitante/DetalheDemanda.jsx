@@ -306,32 +306,11 @@ export default function DetalheDemanda() {
       let proximoNivelAlvo = null
 
       if (modelo === 'organograma') {
-        // Nivel_2 aprovando: finaliza direto.
-        // Nivel_0 ou nivel_1 aprovando: escala pro SEU proprio aprovador_direto.
-        //   - Se aprovador_direto existe: usa ele (nivel_1 especifico ou nivel_2)
-        //   - Se nao: escala pra nivel_2 (qualquer)
+        // Regra fixa: qualquer aprovacao de nivel_0 ou nivel_1 sobe pra nivel_2.
+        // O "specific person" so importa no ROTEAMENTO INICIAL (aprovador_direto
+        // do solicitante); depois disso a cadeia converge no nivel_2 (qualquer).
         if (meuPerfil === 'aprovador_nivel_0' || meuPerfil === 'aprovador_1') {
-          const { data: meu } = await supabase
-            .from('perfis').select('aprovador_direto_id').eq('id', perfil.id).maybeSingle()
-          const adId = meu?.aprovador_direto_id
-          if (adId) {
-            const { data: ad } = await supabase
-              .from('perfis').select('id, perfil, empresa_id').eq('id', adId).maybeSingle()
-            const nivelAd = ad?.perfil === 'aprovador_nivel_0' ? 0
-                          : ad?.perfil === 'aprovador_1'       ? 1
-                          : ad?.perfil === 'aprovador_2'       ? 2 : null
-            if (nivelAd !== null && ad.empresa_id === demanda.empresa_id) {
-              // Escala pro proprio aprovador direto
-              statusNovo = 'aguardando_aprovacao'
-              novoAprovadorId = ad.id
-              novoNivel = nivelAd
-              motivoEscalacao = `Escalado para aprovador direto (Nivel ${nivelAd})`
-            } else {
-              proximoNivelAlvo = 2  // fallback
-            }
-          } else {
-            proximoNivelAlvo = 2  // fallback
-          }
+          proximoNivelAlvo = 2
         }
         // aprovador_2 (ou admin_agencia) -> aprovado direto
       } else {
