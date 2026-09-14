@@ -297,7 +297,6 @@ export default function DetalheDemanda() {
     ])
     setDemanda(d); setHistorico(h ?? []); setOpcoes(o ?? [])
     setAprovacao(a); setBilhete(b)
-    console.log('[DetalheDemanda] aprovacao carregada:', JSON.stringify(a))
     setLoading(false)
     const now = new Date()
     setUploadData(now.toISOString().split('T')[0])
