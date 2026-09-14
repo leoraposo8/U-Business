@@ -180,18 +180,19 @@ function FormRevisao({ demanda, perfil, onEnviar, onCancelar }) {
   )
 }
 
-function OpcaoCard({ opcao, selecionada, onSelecionar, podeSel }) {
+function OpcaoCard({ opcao, selecionada, endossada, onSelecionar, podeSel }) {
   return (
     <div className="rounded-xl border-2 p-4 transition-all cursor-pointer"
       style={{
-        borderColor: selecionada ? '#C0186A' : '#E5E7EB',
-        background: selecionada ? '#fdf2f8' : 'white',
+        borderColor: selecionada ? '#C0186A' : endossada ? '#F59E0B' : '#E5E7EB',
+        background: selecionada ? '#fdf2f8' : endossada ? '#FFFBEB' : 'white',
       }}
       onClick={() => podeSel && onSelecionar(opcao.id)}>
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             {selecionada && <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: '#C0186A', color: 'white' }}>✓ Selecionado</span>}
+            {endossada && !selecionada && <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: '#F59E0B', color: 'white' }}>Endossado pelo Nível anterior</span>}
             <p className="text-sm font-semibold" style={{ color: '#1A1614' }}>{opcao.companhia}</p>
           </div>
           {opcao.descricao && <p className="text-sm mb-1" style={{ color: '#6B7280' }}>{opcao.descricao}</p>}
@@ -303,6 +304,14 @@ export default function DetalheDemanda() {
   }
 
   useEffect(() => { carregar() }, [id])
+
+  // Quando a demanda ja tem uma aprovacao previa (Fillipi endossou, agora
+  // Juliana ta abrindo), pre-seleciona as opcoes escolhidas anteriormente
+  // pra proximo aprovador ver o que foi endossado e habilitar o botao aprovar.
+  useEffect(() => {
+    if (aprovacao?.opcao_id && !opcaoSelecionada) setOpcaoSelecionada(aprovacao.opcao_id)
+    if (aprovacao?.opcao_volta_id && !opcaoVoltaSelecionada) setOpcaoVoltaSelecionada(aprovacao.opcao_volta_id)
+  }, [aprovacao?.opcao_id, aprovacao?.opcao_volta_id])
 
   async function aprovar() {
     if (!opcaoSelecionada || !tipoEmissaoSel) return
@@ -636,7 +645,8 @@ export default function DetalheDemanda() {
                       <div className="space-y-3 mb-4">
                         {opcoesIda.map(op => (
                           <OpcaoCard key={op.id} opcao={op}
-                            selecionada={opcaoSelecionada === op.id || aprovacao?.opcao_id === op.id}
+                            selecionada={opcaoSelecionada === op.id}
+                            endossada={aprovacao?.opcao_id === op.id}
                             podeSel={podAprovar}
                             onSelecionar={id => { setOpcaoSelecionada(id === opcaoSelecionada ? null : id); setTipoEmissaoSel(null) }} />
                         ))}
@@ -645,7 +655,8 @@ export default function DetalheDemanda() {
                       <div className="space-y-3">
                         {opcoesVolta.map(op => (
                           <OpcaoCard key={op.id} opcao={op}
-                            selecionada={opcaoVoltaSelecionada === op.id || aprovacao?.opcao_volta_id === op.id}
+                            selecionada={opcaoVoltaSelecionada === op.id}
+                            endossada={aprovacao?.opcao_volta_id === op.id}
                             podeSel={podAprovar}
                             onSelecionar={id => { setOpcaoVoltaSelecionada(id === opcaoVoltaSelecionada ? null : id); setTipoEmissaoSel(null) }} />
                         ))}
@@ -657,7 +668,8 @@ export default function DetalheDemanda() {
                   <div className="space-y-3">
                     {opcoes.map(op => (
                       <OpcaoCard key={op.id} opcao={op}
-                        selecionada={opcaoSelecionada === op.id || aprovacao?.opcao_id === op.id}
+                        selecionada={opcaoSelecionada === op.id}
+                        endossada={aprovacao?.opcao_id === op.id}
                         podeSel={podAprovar}
                         onSelecionar={id => { setOpcaoSelecionada(id === opcaoSelecionada ? null : id); setTipoEmissaoSel(null) }} />
                     ))}
