@@ -272,6 +272,16 @@ export default function FilaOpcoes() {
         : 'Adicione ao menos uma opção com companhia.')
       return
     }
+    // Aereo/rodo/hosp/pacote: saida (data+hora) e chegada (data+hora) sao obrigatorias
+    if (!isPosvenda) {
+      const faltando = validas.findIndex(o =>
+        !o.saida_data || !o.saida_hora || !o.chegada_data || !o.chegada_hora
+      )
+      if (faltando !== -1) {
+        alert(`Opção ${faltando + 1}: preencha saída (data+hora) e chegada (data+hora) — obrigatórios.`)
+        return
+      }
+    }
     setEnviando(true)
     const editando = demandaAtiva.status === 'aguardando_aprovacao'
     try {
@@ -477,10 +487,10 @@ export default function FilaOpcoes() {
                   {demandaAtiva.tipo !== 'posvenda' && (
                   <div className="grid grid-cols-2 gap-3 mt-3">
                     <div>
-                      <label className="label">Saída</label>
+                      <label className="label">Saída *</label>
                       <div className="grid grid-cols-2 gap-2">
-                        <input type="date" className="input" value={op.saida_data} onChange={e => setOpcao(idx, 'saida_data', e.target.value)} />
-                        <input type="time" className="input" value={op.saida_hora} onChange={e => setOpcao(idx, 'saida_hora', e.target.value)} />
+                        <input type="date" className="input" value={op.saida_data} onChange={e => setOpcao(idx, 'saida_data', e.target.value)} required />
+                        <input type="time" className="input" value={op.saida_hora} onChange={e => setOpcao(idx, 'saida_hora', e.target.value)} required />
                       </div>
                       {op.saida_data && demandaAtiva.data_ida && op.saida_data !== demandaAtiva.data_ida && (
                         <p className="text-xs mt-1 font-medium" style={{ color: '#E8820C' }}>
@@ -489,10 +499,10 @@ export default function FilaOpcoes() {
                       )}
                     </div>
                     <div>
-                      <label className="label">Chegada</label>
+                      <label className="label">Chegada *</label>
                       <div className="grid grid-cols-2 gap-2">
-                        <input type="date" className="input" value={op.chegada_data} onChange={e => setOpcao(idx, 'chegada_data', e.target.value)} />
-                        <input type="time" className="input" value={op.chegada_hora} onChange={e => setOpcao(idx, 'chegada_hora', e.target.value)} />
+                        <input type="date" className="input" value={op.chegada_data} onChange={e => setOpcao(idx, 'chegada_data', e.target.value)} required />
+                        <input type="time" className="input" value={op.chegada_hora} onChange={e => setOpcao(idx, 'chegada_hora', e.target.value)} required />
                       </div>
                     </div>
                   </div>
