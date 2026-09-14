@@ -60,11 +60,12 @@ export async function resolverAprovador(supabase, { empresaId, obraId, solicitan
     }
     // Solicitante ou nivel_0: usa aprovador_direto do proprio requisitante
     if (adId) {
-      const { data: ad } = await supabase
+      const adRes = await supabase
         .from('perfis').select('perfil').eq('id', adId).maybeSingle()
-      const nivelAd = NIVEL_POR_PERFIL[ad?.perfil]
+      console.log('[resolverAprovador.ad]', JSON.stringify({ adId, adData: adRes.data, adError: adRes.error?.message }))
+      const nivelAd = NIVEL_POR_PERFIL[adRes.data?.perfil]
       if (nivelAd !== undefined) {
-        return { aprovadorId: adId, nivel: nivelAd, motivo: `aprovador_direto_${ad.perfil}` }
+        return { aprovadorId: adId, nivel: nivelAd, motivo: `aprovador_direto_${adRes.data.perfil}` }
       }
     }
     // Fallback: primeiro nivel_0 (pra solicitante) ou primeiro nivel_1 (pra nivel_0)
