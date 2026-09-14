@@ -217,7 +217,8 @@ function OpcaoCard({ opcao, selecionada, endossada, aprovada, onSelecionar, pode
               </div>
             )}
           </div>
-          {opcao.reembolso && <p className="text-xs mt-1" style={{ color: '#6B7280' }}>Reembolso: {opcao.reembolso}</p>}
+          {opcao.escalas    && <p className="text-xs mt-1" style={{ color: '#6B7280' }}>Escalas: {opcao.escalas}</p>}
+          {opcao.reembolso  && <p className="text-xs mt-1" style={{ color: '#6B7280' }}>Reembolso: {opcao.reembolso}</p>}
           {opcao.remarcacao && <p className="text-xs mt-0.5" style={{ color: '#6B7280' }}>Remarcação: {opcao.remarcacao}</p>}
         </div>
         <div className="text-right flex-shrink-0">

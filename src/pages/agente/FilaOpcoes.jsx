@@ -11,7 +11,7 @@ import { resolverAprovador } from '../../lib/aprovador'
 // fmt -> use fmtData from lib/datetime
 
 const OPCAO_VAZIA = () => ({
-  descricao: '', companhia: '',
+  descricao: '', companhia: '', escalas: '',
   trecho: 'ida_e_volta',   // 'ida' | 'volta' | 'ida_e_volta'
   saida_data: '', saida_hora: '',
   chegada_data: '', chegada_hora: '',
@@ -203,6 +203,7 @@ export default function FilaOpcoes() {
     const [volta_chegada_data, volta_chegada_hora] = split(row.horario_volta_chegada)
     return {
       descricao: row.descricao ?? '', companhia: row.companhia ?? '',
+      escalas: row.escalas ?? '',
       trecho: row.trecho ?? 'ida_e_volta',
       saida_data, saida_hora,
       chegada_data, chegada_hora,
@@ -224,7 +225,7 @@ export default function FilaOpcoes() {
       setCarregandoOpcoes(true)
       const { data } = await supabase
         .from('opcoes')
-        .select('id, descricao, companhia, trecho, horario_ida, horario_volta, horario_volta_saida, horario_volta_chegada, preco_venda, preco_milha, reembolso, remarcacao, imagem_print_url')
+        .select('id, descricao, companhia, escalas, trecho, horario_ida, horario_volta, horario_volta_saida, horario_volta_chegada, preco_venda, preco_milha, reembolso, remarcacao, imagem_print_url')
         .eq('demanda_id', d.id)
         .order('id', { ascending: true })
       const mapeadas = (data ?? []).map(dbToForm)
@@ -257,6 +258,7 @@ export default function FilaOpcoes() {
         demanda_id: demandaAtiva.id,
         descricao: op.descricao || null,
         companhia: op.companhia || null,
+        escalas: op.escalas || null,
         trecho,
         horario_ida:           querIda   && op.saida_data         ? `${op.saida_data} ${op.saida_hora || '00:00'}` : null,
         horario_volta:         querIda   && op.chegada_data       ? `${op.chegada_data} ${op.chegada_hora || '00:00'}` : null,
@@ -557,6 +559,11 @@ export default function FilaOpcoes() {
                         <input type="date" className="input" value={op.chegada_data} onChange={e => setOpcao(idx, 'chegada_data', e.target.value)} required />
                         <input type="time" className="input" value={op.chegada_hora} onChange={e => setOpcao(idx, 'chegada_hora', e.target.value)} required />
                       </div>
+                      {op.chegada_data && demandaAtiva.data_ida && op.chegada_data !== demandaAtiva.data_ida && (
+                        <p className="text-xs mt-1 font-medium" style={{ color: '#E8820C' }}>
+                          ⚠️ Data diferente da solicitada ({new Date(demandaAtiva.data_ida+'T12:00:00').toLocaleDateString('pt-BR', {timeZone:'America/Sao_Paulo'})})
+                        </p>
+                      )}
                     </div>
                   </div>
                   )}
@@ -572,6 +579,11 @@ export default function FilaOpcoes() {
                             <input type="date" className="input" value={op.volta_saida_data} onChange={e => setOpcao(idx, 'volta_saida_data', e.target.value)} required />
                             <input type="time" className="input" value={op.volta_saida_hora} onChange={e => setOpcao(idx, 'volta_saida_hora', e.target.value)} required />
                           </div>
+                          {op.volta_saida_data && demandaAtiva.data_volta && op.volta_saida_data !== demandaAtiva.data_volta && (
+                            <p className="text-xs mt-1 font-medium" style={{ color: '#E8820C' }}>
+                              ⚠️ Data diferente da solicitada ({new Date(demandaAtiva.data_volta+'T12:00:00').toLocaleDateString('pt-BR', {timeZone:'America/Sao_Paulo'})})
+                            </p>
+                          )}
                         </div>
                         <div>
                           <label className="label">Chegada (volta) *</label>
@@ -579,12 +591,22 @@ export default function FilaOpcoes() {
                             <input type="date" className="input" value={op.volta_chegada_data} onChange={e => setOpcao(idx, 'volta_chegada_data', e.target.value)} required />
                             <input type="time" className="input" value={op.volta_chegada_hora} onChange={e => setOpcao(idx, 'volta_chegada_hora', e.target.value)} required />
                           </div>
+                          {op.volta_chegada_data && demandaAtiva.data_volta && op.volta_chegada_data !== demandaAtiva.data_volta && (
+                            <p className="text-xs mt-1 font-medium" style={{ color: '#E8820C' }}>
+                              ⚠️ Data diferente da solicitada ({new Date(demandaAtiva.data_volta+'T12:00:00').toLocaleDateString('pt-BR', {timeZone:'America/Sao_Paulo'})})
+                            </p>
+                          )}
                         </div>
                       </div>
                     </div>
                   )}
 
                   {demandaAtiva.tipo !== 'posvenda' && (<>
+                  <div className="mt-3">
+                    <label className="label">Escalas / conexões <span className="text-gray-400 font-normal">(opcional)</span></label>
+                    <input className="input" placeholder="Ex: 1 escala em GRU (2h) · direto na volta"
+                      value={op.escalas} onChange={e => setOpcao(idx, 'escalas', e.target.value)} />
+                  </div>
                   <div className="mt-3">
                     <label className="label">Descrição <span className="text-gray-400 font-normal">(opcional)</span></label>
                     <input className="input" placeholder="Ex: Voo direto, sem escala"
