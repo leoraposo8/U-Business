@@ -43,11 +43,6 @@ export async function resolverAprovador(supabase, { empresaId, obraId, solicitan
   const perfilSol = solRes.data?.perfil
   const adId      = solRes.data?.aprovador_direto_id
 
-  // debug: veja no DevTools -> Console
-  console.log('[resolverAprovador]',
-    JSON.stringify({ empresaId, obraId, solicitanteId, modelo, perfilSol, adId,
-      solRes_error: solRes.error?.message, solRes_data: solRes.data }))
-
   if (modelo === 'organograma') {
     // Nivel_2 criando: auto-aprova
     if (perfilSol === 'aprovador_2') {
@@ -60,12 +55,11 @@ export async function resolverAprovador(supabase, { empresaId, obraId, solicitan
     }
     // Solicitante ou nivel_0: usa aprovador_direto do proprio requisitante
     if (adId) {
-      const adRes = await supabase
+      const { data: ad } = await supabase
         .from('perfis').select('perfil').eq('id', adId).maybeSingle()
-      console.log('[resolverAprovador.ad]', JSON.stringify({ adId, adData: adRes.data, adError: adRes.error?.message }))
-      const nivelAd = NIVEL_POR_PERFIL[adRes.data?.perfil]
+      const nivelAd = NIVEL_POR_PERFIL[ad?.perfil]
       if (nivelAd !== undefined) {
-        return { aprovadorId: adId, nivel: nivelAd, motivo: `aprovador_direto_${adRes.data.perfil}` }
+        return { aprovadorId: adId, nivel: nivelAd, motivo: `aprovador_direto_${ad.perfil}` }
       }
     }
     // Fallback: primeiro nivel_0 (pra solicitante) ou primeiro nivel_1 (pra nivel_0)

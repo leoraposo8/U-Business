@@ -142,6 +142,7 @@ export default function FilaOpcoes() {
     const SELECT = `
       id, tipo, status, empresa_id, obra_id, origem, destino, data_ida, data_volta,
       cidade, checkin, checkout, observacoes, bagagem, created_at,
+      solicitante_id, aprovador_id, proximo_aprovador_nivel,
       passageiros(nome, sobrenome),
       obras(nome),
       solicitante:perfis!solicitante_id(nome),
