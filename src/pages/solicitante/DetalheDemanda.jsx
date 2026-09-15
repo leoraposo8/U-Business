@@ -668,7 +668,11 @@ export default function DetalheDemanda() {
               {(() => {
                 // Modo complementar = todas as opcoes sao 'ida' ou 'volta' (ninguem combo)
                 const trechos = opcoes.map(o => o.trecho || 'ida_e_volta')
-                const modoComplementar = trechos.length > 0 && trechos.every(t => t === 'ida' || t === 'volta')
+                // So faz sentido "modo complementar" quando a demanda e ida-e-volta.
+                // Se a demanda e so ida, opcao vai ter trecho='ida' mas nao e modo complementar.
+                const modoComplementar = !!demanda.data_volta && trechos.length > 0
+                  && trechos.every(t => t === 'ida' || t === 'volta')
+                  && trechos.includes('ida') && trechos.includes('volta')
                 if (modoComplementar) {
                   const opcoesIda   = opcoes.filter(o => o.trecho === 'ida')
                   const opcoesVolta = opcoes.filter(o => o.trecho === 'volta')
@@ -716,7 +720,11 @@ export default function DetalheDemanda() {
               {/* Tipo emissão + Confirmar — aparece só quando opção está selecionada */}
               {podAprovar && opcaoSelecionada && (() => {
                 const trechos = opcoes.map(o => o.trecho || 'ida_e_volta')
-                const modoComplementar = trechos.length > 0 && trechos.every(t => t === 'ida' || t === 'volta')
+                // So faz sentido "modo complementar" quando a demanda e ida-e-volta.
+                // Se a demanda e so ida, opcao vai ter trecho='ida' mas nao e modo complementar.
+                const modoComplementar = !!demanda.data_volta && trechos.length > 0
+                  && trechos.every(t => t === 'ida' || t === 'volta')
+                  && trechos.includes('ida') && trechos.includes('volta')
                 if (modoComplementar && !opcaoVoltaSelecionada) return null
                 return true
               })() && (
