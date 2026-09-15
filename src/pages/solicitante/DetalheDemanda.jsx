@@ -474,9 +474,16 @@ export default function DetalheDemanda() {
     if (demanda.status === 'emitido') return
     setSalvando(true)
     try {
+      // Volta a demanda pra fila do proprio (ex-)aprovador que esta desfazendo.
+      const meuNivel = perfil?.perfil === 'aprovador_nivel_0' ? 0
+                     : perfil?.perfil === 'aprovador_1'       ? 1
+                     : perfil?.perfil === 'aprovador_2'       ? 2 : null
       await supabase.from('aprovacoes').insert({ demanda_id: id, aprovador_id: perfil.id, decisao: 'desaprovado', comentario: 'Aprovação desfeita' })
-      await supabase.from('demandas').update({ status: 'aguardando_aprovacao', aprovador_id: null }).eq('id', id)
-      await supabase.from('demanda_historico').insert({ demanda_id: id, status_anterior: 'aprovado', status_novo: 'aguardando_aprovacao', usuario_id: perfil.id, comentario: 'Aprovação desfeita pelo aprovador' })
+      await supabase.from('demandas').update({
+        status: 'aguardando_aprovacao', aprovador_id: perfil.id,
+        proximo_aprovador_nivel: meuNivel,
+      }).eq('id', id)
+      await supabase.from('demanda_historico').insert({ demanda_id: id, status_anterior: demanda.status, status_novo: 'aguardando_aprovacao', usuario_id: perfil.id, comentario: 'Aprovação desfeita pelo aprovador' })
       await carregar()
     } finally { setSalvando(false) }
   }
@@ -557,7 +564,14 @@ export default function DetalheDemanda() {
     && (souAprovadorDaDemanda || souNivel2Generico || isAgencia)
   const podeRevisarOpcoes = isAgencia && demanda.status === 'aguardando_aprovacao'
   const podeExcluir = demanda.status === 'aguardando_opcoes' && (perfil?.id === demanda.solicitante_id || isAprovador)
-  const podeDesaprovar = (souAprovadorDaDemanda || isAgencia) && demanda.status === 'aprovado' && demanda.status !== 'emitido'
+  // Pode desfazer: quem endossou/aprovou a demanda por ultimo (aprovacao mais recente
+  // com decisao 'aprovado' e aprovador_id = perfil.id). Vale tanto quando ja foi
+  // aprovacao final (status 'aprovado') quanto quando escalou pro proximo nivel
+  // (status 'aguardando_aprovacao' mas ele foi o ultimo aprovador). Bloqueado apos emissao.
+  const fuiUltimoAprovador = aprovacao?.aprovador_id === perfil?.id && aprovacao?.decisao === 'aprovado'
+  const podeDesaprovar = (fuiUltimoAprovador || isAgencia)
+    && (demanda.status === 'aprovado' || demanda.status === 'aguardando_aprovacao')
+    && demanda.status !== 'emitido'
 
   const tsOpcoes   = historico.find(h => h.status_novo === 'aguardando_aprovacao')?.created_at
   const tsAprovado = historico.find(h => h.status_novo === 'aprovado')?.created_at
