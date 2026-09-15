@@ -9,7 +9,7 @@ import {
   Clock, CheckCircle, XCircle, Loader2, Upload, RotateCcw, Trash2,
   Plane, Bus, Hotel, Pencil
 } from 'lucide-react'
-import { fmtTs, fmtData, fmtDataCurta } from '../../lib/datetime'
+import { fmtTs, fmtData, fmtDataCurta, fmtDataHoraCompacta } from '../../lib/datetime'
 
 // fmt -> use fmtData from lib/datetime
 // fmtTs imported from lib/datetime
@@ -76,15 +76,35 @@ function FormRevisao({ demanda, perfil, onEnviar, onCancelar }) {
       if (form.volta_flexivel) partes.push(`Volta flexível: ${form.data_volta_min} a ${form.data_volta_max}`)
       if (comentario) partes.push(comentario)
 
+      const novasIda   = form.ida_flexivel ? null : form.data_ida
+      const novasVolta = form.volta_flexivel ? null : form.data_volta
+
       const updateData = {
         origem: form.origem, destino: form.destino, bagagem: form.bagagem,
-        data_ida: form.ida_flexivel ? null : form.data_ida,
-        data_volta: form.volta_flexivel ? null : form.data_volta,
+        data_ida: novasIda,
+        data_volta: novasVolta,
         cidade: form.cidade, checkin: form.checkin, checkout: form.checkout,
         observacoes: partes.length ? partes.join(' · ') : form.observacoes,
       }
       await supabase.from('demandas').update(updateData).eq('id', demanda.id)
-      await onEnviar(comentario || 'Revisão solicitada')
+
+      // Detecta mudancas e inclui no comentario da revisao pra o agente ver o que foi alterado.
+      const fmt = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—'
+      const diffs = []
+      if ((demanda.origem || '') !== (form.origem || ''))       diffs.push(`origem: ${demanda.origem || '—'} → ${form.origem || '—'}`)
+      if ((demanda.destino || '') !== (form.destino || ''))     diffs.push(`destino: ${demanda.destino || '—'} → ${form.destino || '—'}`)
+      if ((demanda.data_ida || '')   !== (novasIda || ''))       diffs.push(`ida: ${fmt(demanda.data_ida)} → ${fmt(novasIda)}`)
+      if ((demanda.data_volta || '') !== (novasVolta || ''))     diffs.push(`volta: ${fmt(demanda.data_volta)} → ${fmt(novasVolta)}`)
+      if ((demanda.cidade || '')     !== (form.cidade || ''))    diffs.push(`cidade: ${demanda.cidade || '—'} → ${form.cidade || '—'}`)
+      if ((demanda.checkin || '')    !== (form.checkin || ''))   diffs.push(`check-in: ${fmt(demanda.checkin)} → ${fmt(form.checkin)}`)
+      if ((demanda.checkout || '')   !== (form.checkout || ''))  diffs.push(`check-out: ${fmt(demanda.checkout)} → ${fmt(form.checkout)}`)
+      if ((demanda.bagagem ?? false) !== !!form.bagagem)         diffs.push(`bagagem: ${demanda.bagagem ? 'Sim' : 'Não'} → ${form.bagagem ? 'Sim' : 'Não'}`)
+
+      const partesComentario = []
+      if (diffs.length) partesComentario.push(`Alterações: ${diffs.join(' · ')}`)
+      if (comentario)   partesComentario.push(comentario)
+      const comentarioFinal = partesComentario.join(' — ') || 'Revisão solicitada'
+      await onEnviar(comentarioFinal)
     } finally { setSalvando(false) }
   }
 
@@ -205,15 +225,15 @@ function OpcaoCard({ opcao, selecionada, endossada, aprovada, onSelecionar, pode
           )}
           <div className="flex flex-col gap-0.5 text-xs" style={{ color: '#6B7280' }}>
             {(opcao.trecho !== 'volta') && (opcao.horario_ida || opcao.horario_volta) && (
-              <div className="flex gap-3">
-                {opcao.horario_ida   && <span>🛫 Saída: {opcao.horario_ida}</span>}
-                {opcao.horario_volta && <span>🛬 Chegada: {opcao.horario_volta}</span>}
+              <div className="flex gap-3 flex-wrap">
+                {opcao.horario_ida   && <span>🛫 {fmtDataHoraCompacta(opcao.horario_ida)}</span>}
+                {opcao.horario_volta && <span>🛬 {fmtDataHoraCompacta(opcao.horario_volta)}</span>}
               </div>
             )}
             {(opcao.trecho !== 'ida') && (opcao.horario_volta_saida || opcao.horario_volta_chegada) && (
-              <div className="flex gap-3">
-                {opcao.horario_volta_saida   && <span>🛫 Saída volta: {opcao.horario_volta_saida}</span>}
-                {opcao.horario_volta_chegada && <span>🛬 Chegada volta: {opcao.horario_volta_chegada}</span>}
+              <div className="flex gap-3 flex-wrap">
+                {opcao.horario_volta_saida   && <span>🛫 Volta: {fmtDataHoraCompacta(opcao.horario_volta_saida)}</span>}
+                {opcao.horario_volta_chegada && <span>🛬 Volta: {fmtDataHoraCompacta(opcao.horario_volta_chegada)}</span>}
               </div>
             )}
           </div>
