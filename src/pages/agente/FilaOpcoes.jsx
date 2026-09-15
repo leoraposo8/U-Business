@@ -280,6 +280,7 @@ export default function FilaOpcoes() {
   const [enviando, setEnviando] = useState(false)
   const [carregandoOpcoes, setCarregandoOpcoes] = useState(false)
   const [lendoPrint, setLendoPrint] = useState(false)
+  const [revisaoInfo, setRevisaoInfo] = useState(null)  // { comentario, autor, quando } quando demanda voltou por revisao
 
   // Paste global: Ctrl+V com imagem na area de trabalho preenche a ultima opcao
   // (ou a que foi tocada por ultimo, se implementar isso depois).
@@ -402,9 +403,12 @@ export default function FilaOpcoes() {
     }
   }
 
-  // Seleciona a demanda; se já estiver enviada, carrega as opções existentes para edição
+  // Seleciona a demanda; se já estiver enviada, carrega as opções existentes para edição.
+  // Se veio de pedido de revisao (aguardando_opcoes vindo de aguardando_aprovacao),
+  // busca o comentario da revisao pra mostrar destacado no topo.
   async function selecionarDemanda(d) {
     setDemandaAtiva(d)
+    setRevisaoInfo(null)
     if (d.status === 'aguardando_aprovacao') {
       setCarregandoOpcoes(true)
       const { data } = await supabase
@@ -415,6 +419,24 @@ export default function FilaOpcoes() {
       const mapeadas = (data ?? []).map(dbToForm)
       setOpcoes(mapeadas.length ? mapeadas : [OPCAO_VAZIA()])
       setCarregandoOpcoes(false)
+    } else if (d.status === 'aguardando_opcoes') {
+      setOpcoes([OPCAO_VAZIA()])
+      // Detecta pedido de revisao mais recente
+      const { data: hist } = await supabase.from('demanda_historico')
+        .select('comentario, created_at, usuario:perfis!usuario_id(nome)')
+        .eq('demanda_id', d.id)
+        .eq('status_anterior', 'aguardando_aprovacao')
+        .eq('status_novo', 'aguardando_opcoes')
+        .order('created_at', { ascending: false })
+        .limit(1)
+      if (hist && hist.length) {
+        const r = hist[0]
+        setRevisaoInfo({
+          comentario: r.comentario || 'Revisão solicitada',
+          autor: r.usuario?.nome || '—',
+          quando: r.created_at,
+        })
+      }
     } else {
       setOpcoes([OPCAO_VAZIA()])
     }
@@ -678,6 +700,13 @@ export default function FilaOpcoes() {
               </div>
             )}
 
+            {revisaoInfo && (
+              <div className="mb-4 p-3 rounded-lg border" style={{ borderColor: '#FDE68A', background: '#FEF3C7', color: '#92400E' }}>
+                <p className="text-xs font-semibold uppercase tracking-wide mb-1">Pedido de revisão</p>
+                <p className="text-sm">{revisaoInfo.comentario}</p>
+                <p className="text-[10px] mt-1 opacity-75">— {revisaoInfo.autor} · {fmtTs(revisaoInfo.quando)}</p>
+              </div>
+            )}
             <h2 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: '#1A1614' }}>
               Opções de viagem
               {lendoPrint && (
