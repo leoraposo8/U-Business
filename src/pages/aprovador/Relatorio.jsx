@@ -74,14 +74,20 @@ export default function Relatorio() {
 
       if (!bils || bils.length === 0) { setBilhetes([]); setLoading(false); return }
 
-      // Step 3: aprovacoes com opcao (valor + tipo emissao)
+      // Step 3: aprovacoes com opcao (valor + tipo emissao). Especifica as 2 FKs
+      // porque agora aprovacoes.opcao_id (ida/combo) e opcao_volta_id (complementar).
       const { data: aprs } = await supabase
         .from('aprovacoes')
-        .select('demanda_id, comentario, opcoes(preco_venda, preco_milha)')
+        .select('demanda_id, comentario, opcao:opcoes!opcao_id(preco_venda, preco_milha), opcao_volta:opcoes!opcao_volta_id(preco_venda, preco_milha)')
         .in('demanda_id', demIds)
         .eq('decisao', 'aprovado')
+        .order('created_at', { ascending: false })
 
-      const aprMap = Object.fromEntries((aprs ?? []).map(a => [a.demanda_id, a]))
+      // pega a aprovacao mais recente por demanda (query ja veio ordenada desc)
+      const aprMap = {}
+      for (const a of (aprs ?? [])) {
+        if (!aprMap[a.demanda_id]) aprMap[a.demanda_id] = a
+      }
 
       // Merge
       const merged = bils.map(b => ({
@@ -96,15 +102,19 @@ export default function Relatorio() {
     load()
   }, [perfil, inicio, fim])
 
-  function getValor(b) {
-    const tipo = b.aprovacao?.comentario
-    const op = b.aprovacao?.opcoes
-    if (!op) return 0
-    return tipo === 'milha' ? (op.preco_milha || 0) : (op.preco_venda || 0)
+  // Comentario pode ser "tarifado", "milha", "tarifado — Escalado para Nivel 2", etc.
+  // O tipo esta sempre nas primeiras palavras.
+  function getTipoEmissao(b) {
+    const c = (b.aprovacao?.comentario || '').toLowerCase()
+    return c.startsWith('milha') ? 'milha' : 'tarifado'
   }
 
-  function getTipoEmissao(b) {
-    return b.aprovacao?.comentario === 'milha' ? 'milha' : 'tarifado'
+  function getValor(b) {
+    const tipo = getTipoEmissao(b)
+    const ida   = b.aprovacao?.opcao
+    const volta = b.aprovacao?.opcao_volta
+    const soma = (op) => op ? (tipo === 'milha' ? Number(op.preco_milha || 0) : Number(op.preco_venda || 0)) : 0
+    return soma(ida) + soma(volta)
   }
 
   const filtrados = bilhetes.filter(b =>
