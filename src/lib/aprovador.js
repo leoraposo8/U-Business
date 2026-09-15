@@ -44,16 +44,17 @@ export async function resolverAprovador(supabase, { empresaId, obraId, solicitan
   const adId      = solRes.data?.aprovador_direto_id
 
   if (modelo === 'organograma') {
-    // Nivel_2 criando: auto-aprova
+    // Se o proprio solicitante e aprovador, ele mesmo endossa/aprova antes de escalar.
     if (perfilSol === 'aprovador_2') {
-      return { aprovadorId: solicitanteId, nivel: null, autoAprovar: true, motivo: 'auto_nivel_2' }
+      return { aprovadorId: solicitanteId, nivel: 2, motivo: 'auto_nivel_2' }
     }
-    // Nivel_1 criando: vai direto pra nivel_2 (qualquer)
     if (perfilSol === 'aprovador_1') {
-      const id = await primeiroDoNivel(supabase, empresaId, 2)
-      return { aprovadorId: id, nivel: 2, motivo: 'nivel_1_pra_nivel_2' }
+      return { aprovadorId: solicitanteId, nivel: 1, motivo: 'auto_nivel_1' }
     }
-    // Solicitante ou nivel_0: usa aprovador_direto do proprio requisitante
+    if (perfilSol === 'aprovador_nivel_0') {
+      return { aprovadorId: solicitanteId, nivel: 0, motivo: 'auto_nivel_0' }
+    }
+    // Solicitante regular: usa aprovador_direto configurado
     if (adId) {
       const { data: ad } = await supabase
         .from('perfis').select('perfil').eq('id', adId).maybeSingle()
@@ -62,11 +63,10 @@ export async function resolverAprovador(supabase, { empresaId, obraId, solicitan
         return { aprovadorId: adId, nivel: nivelAd, motivo: `aprovador_direto_${ad.perfil}` }
       }
     }
-    // Fallback: primeiro nivel_0 (pra solicitante) ou primeiro nivel_1 (pra nivel_0)
-    const nivelFallback = perfilSol === 'aprovador_nivel_0' ? 1 : 0
-    const idFallback = await primeiroDoNivel(supabase, empresaId, nivelFallback)
+    // Fallback pra solicitante sem aprovador_direto: primeiro nivel_0 por nome
+    const idFallback = await primeiroDoNivel(supabase, empresaId, 0)
     if (idFallback) {
-      return { aprovadorId: idFallback, nivel: nivelFallback, motivo: `fallback_nivel_${nivelFallback}` }
+      return { aprovadorId: idFallback, nivel: 0, motivo: 'fallback_nivel_0' }
     }
     // Ultimo recurso: qualquer nivel_2
     const n2 = await primeiroDoNivel(supabase, empresaId, 2)

@@ -289,7 +289,7 @@ export default function DetalheDemanda() {
         demanda_passageiros(passageiros(nome, sobrenome, cpf, contato)),
         obras(nome, codigo),
         empresas(id, nome, modelo_aprovacao),
-        solicitante:perfis!solicitante_id(nome),
+        solicitante:perfis!solicitante_id(nome, perfil),
         agente:perfis!agente_id(nome)
       `).eq('id', id).single(),
       supabase.from('demanda_historico').select('*, usuario:perfis!usuario_id(nome)').eq('demanda_id', id).order('created_at'),
@@ -337,11 +337,39 @@ export default function DetalheDemanda() {
       let proximoNivelAlvo = null
 
       if (modelo === 'organograma') {
-        // Regra fixa: qualquer aprovacao de nivel_0 ou nivel_1 sobe pra nivel_2.
-        // O "specific person" so importa no ROTEAMENTO INICIAL (aprovador_direto
-        // do solicitante); depois disso a cadeia converge no nivel_2 (qualquer).
-        if (meuPerfil === 'aprovador_nivel_0' || meuPerfil === 'aprovador_1') {
+        // Escalacao:
+        //  - Nivel_2 aprova -> aprovado (statusNovo default)
+        //  - Nivel_1 aprova -> escala pra nivel_2 (qualquer)
+        //  - Nivel_0 aprova:
+        //     - Se solicitante era 'solicitante' regular -> nivel_2 (skip nivel_1)
+        //     - Se solicitante era 'aprovador_nivel_0' (auto-endosso) -> escala pro
+        //       aprovador_direto do proprio aprovador atual (nivel_1 especifico)
+        if (meuPerfil === 'aprovador_1') {
           proximoNivelAlvo = 2
+        } else if (meuPerfil === 'aprovador_nivel_0') {
+          const perfilSol = demanda.solicitante?.perfil
+          if (perfilSol === 'aprovador_nivel_0') {
+            // auto-endosso: escala pro proprio aprovador direto
+            const { data: meu } = await supabase
+              .from('perfis').select('aprovador_direto_id').eq('id', perfil.id).maybeSingle()
+            const adId = meu?.aprovador_direto_id
+            if (adId) {
+              const { data: ad } = await supabase
+                .from('perfis').select('id, perfil').eq('id', adId).maybeSingle()
+              if (ad?.perfil === 'aprovador_1') {
+                statusNovo = 'aguardando_aprovacao'
+                novoAprovadorId = ad.id
+                novoNivel = 1
+                motivoEscalacao = 'Endossado por si; escalado para Nivel 1'
+              } else {
+                proximoNivelAlvo = 2  // fallback
+              }
+            } else {
+              proximoNivelAlvo = 2  // fallback: nao tem aprov_direto, vai pra 2
+            }
+          } else {
+            proximoNivelAlvo = 2  // solicitante regular: skip nivel_1
+          }
         }
         // aprovador_2 (ou admin_agencia) -> aprovado direto
       } else {
