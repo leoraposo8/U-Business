@@ -329,14 +329,20 @@ export default function DetalheDemanda() {
 
   // Quando a demanda ja tem uma aprovacao previa e o proximo aprovador esta
   // abrindo (status ainda aguardando_aprovacao), pre-seleciona as opcoes
-  // pra ele ver o que foi endossado e habilitar o botao aprovar.
+  // e o tipo de emissao (do comentario da aprovacao anterior) pra ele ver
+  // o que foi endossado e habilitar o botao aprovar.
   // Nao faz isso quando demanda ja aprovada/emitida — ai a marcacao vira
   // "Aprovada" (verde) via prop separada.
   useEffect(() => {
     if (demanda?.status !== 'aguardando_aprovacao') return
     if (aprovacao?.opcao_id && !opcaoSelecionada) setOpcaoSelecionada(aprovacao.opcao_id)
     if (aprovacao?.opcao_volta_id && !opcaoVoltaSelecionada) setOpcaoVoltaSelecionada(aprovacao.opcao_volta_id)
-  }, [aprovacao?.opcao_id, aprovacao?.opcao_volta_id, demanda?.status])
+    if (aprovacao?.comentario && !tipoEmissaoSel) {
+      const c = aprovacao.comentario.toLowerCase()
+      if (c.startsWith('milha')) setTipoEmissaoSel('milha')
+      else if (c.startsWith('tarifado')) setTipoEmissaoSel('tarifado')
+    }
+  }, [aprovacao?.opcao_id, aprovacao?.opcao_volta_id, aprovacao?.comentario, demanda?.status])
 
   async function aprovar() {
     if (!opcaoSelecionada || !tipoEmissaoSel) return
