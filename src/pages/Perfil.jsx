@@ -1,14 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
-import { User, Mail, Building2, Shield, Lock, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
+import { User, Mail, Building2, Shield, Lock, Loader2, CheckCircle2, AlertCircle, Users, ArrowUp, ArrowDown } from 'lucide-react'
 
 const PERFIL_LABEL = {
-  admin_agencia: 'Admin da agência',
-  agente: 'Agente',
-  admin_cliente: 'Admin da empresa',
-  aprovador: 'Aprovador',
-  solicitante: 'Solicitante',
+  admin_agencia:     'Admin da agência',
+  agente:            'Agente',
+  admin_cliente:     'Admin da empresa',
+  aprovador_nivel_0: 'Aprovador Nível 0',
+  aprovador_1:       'Aprovador Nível 1',
+  aprovador_2:       'Aprovador Nível 2',
+  aprovador:         'Aprovador',
+  solicitante:       'Solicitante',
 }
 
 export default function Perfil() {
@@ -17,6 +20,53 @@ export default function Perfil() {
   const [confirmar, setConfirmar] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [feedback, setFeedback] = useState(null) // { tipo: 'ok'|'erro', msg }
+
+  const [aprovadorDireto, setAprovadorDireto] = useState(null)
+  const [subordinados, setSubordinados]       = useState([])
+  const [loadingHier, setLoadingHier]         = useState(false)
+
+  // Regras de exibição:
+  // - Aprovador direto acima: mostra pra solicitante e aprovador_nivel_0.
+  //   Nivel_1 e Nivel_2 NAO mostram quem está acima (regra do produto).
+  // - Subordinados abaixo: mostra pra nivel_0 (solicitantes) e nivel_1 (nivel_0 abaixo).
+  const meuPerfil = perfil?.perfil
+  const mostraAprovadorAcima = meuPerfil === 'solicitante' || meuPerfil === 'aprovador_nivel_0'
+  const mostraSubordinados   = meuPerfil === 'aprovador_nivel_0' || meuPerfil === 'aprovador_1'
+
+  useEffect(() => {
+    if (!perfil?.id) return
+    let cancelado = false
+    async function carregar() {
+      setLoadingHier(true)
+      const promessas = []
+
+      // Aprovador direto (perfil.aprovador_direto_id -> perfis)
+      if (mostraAprovadorAcima && perfil.aprovador_direto_id) {
+        promessas.push(
+          supabase.from('perfis').select('id, nome, perfil').eq('id', perfil.aprovador_direto_id).maybeSingle()
+        )
+      } else {
+        promessas.push(Promise.resolve({ data: null }))
+      }
+
+      // Subordinados (perfis onde aprovador_direto_id = perfil.id)
+      if (mostraSubordinados) {
+        promessas.push(
+          supabase.from('perfis').select('id, nome, perfil').eq('aprovador_direto_id', perfil.id).order('nome')
+        )
+      } else {
+        promessas.push(Promise.resolve({ data: [] }))
+      }
+
+      const [{ data: ad }, { data: subs }] = await Promise.all(promessas)
+      if (cancelado) return
+      setAprovadorDireto(ad ?? null)
+      setSubordinados(subs ?? [])
+      setLoadingHier(false)
+    }
+    carregar()
+    return () => { cancelado = true }
+  }, [perfil?.id, perfil?.aprovador_direto_id, mostraAprovadorAcima, mostraSubordinados])
 
   const valido = senha.length >= 8 && senha === confirmar
 
@@ -36,6 +86,8 @@ export default function Perfil() {
     }
   }
 
+  const mostraHierarquia = mostraAprovadorAcima || mostraSubordinados
+
   return (
     <div className="p-8 max-w-2xl">
       <div className="mb-6">
@@ -53,6 +105,59 @@ export default function Perfil() {
           <Linha icon={Shield} label="Perfil" value={PERFIL_LABEL[perfil?.perfil] ?? perfil?.perfil ?? '—'} />
         </div>
       </div>
+
+      {/* Hierarquia */}
+      {mostraHierarquia && (
+        <div className="card p-5 mb-5">
+          <p className="text-sm font-medium mb-4" style={{ color: '#1A1614' }}>Hierarquia de aprovação</p>
+          {loadingHier ? (
+            <div className="text-sm flex items-center gap-2" style={{ color: '#9CA3AF' }}>
+              <Loader2 size={14} className="animate-spin" /> Carregando…
+            </div>
+          ) : (
+            <div className="space-y-4 text-sm">
+              {mostraAprovadorAcima && (
+                <div>
+                  <div className="flex items-center gap-1.5 text-xs uppercase tracking-wide mb-1.5" style={{ color: '#9CA3AF' }}>
+                    <ArrowUp size={12} /> Meu aprovador direto
+                  </div>
+                  {aprovadorDireto ? (
+                    <div className="flex items-center justify-between px-3 py-2 rounded-lg" style={{ background: '#F8F9FA' }}>
+                      <span style={{ color: '#1A1614' }}>{aprovadorDireto.nome}</span>
+                      <span className="text-xs" style={{ color: '#6B7280' }}>{PERFIL_LABEL[aprovadorDireto.perfil] ?? aprovadorDireto.perfil}</span>
+                    </div>
+                  ) : (
+                    <p className="text-xs" style={{ color: '#9CA3AF' }}>Não configurado</p>
+                  )}
+                </div>
+              )}
+
+              {mostraSubordinados && (
+                <div>
+                  <div className="flex items-center gap-1.5 text-xs uppercase tracking-wide mb-1.5" style={{ color: '#9CA3AF' }}>
+                    <ArrowDown size={12} /> Quem eu aprovo
+                    {subordinados.length > 0 && (
+                      <span className="ml-1 font-normal">({subordinados.length})</span>
+                    )}
+                  </div>
+                  {subordinados.length > 0 ? (
+                    <div className="space-y-1">
+                      {subordinados.map(s => (
+                        <div key={s.id} className="flex items-center justify-between px-3 py-2 rounded-lg" style={{ background: '#F8F9FA' }}>
+                          <span style={{ color: '#1A1614' }}>{s.nome}</span>
+                          <span className="text-xs" style={{ color: '#6B7280' }}>{PERFIL_LABEL[s.perfil] ?? s.perfil}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs" style={{ color: '#9CA3AF' }}>Nenhum subordinado configurado</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Trocar senha */}
       <form onSubmit={trocarSenha} className="card p-5">
