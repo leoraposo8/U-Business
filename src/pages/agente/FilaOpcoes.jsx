@@ -528,6 +528,23 @@ export default function FilaOpcoes() {
           return
         }
       }
+
+      // Aereo/rodoviario/pacote: reembolso + remarcacao obrigatorios.
+      // Hospedagem: apenas reembolso (politica) obrigatorio.
+      const tipoDemanda = demandaAtiva.tipo
+      if (tipoDemanda === 'hospedagem') {
+        const idx = validas.findIndex(o => !o.reembolso?.trim())
+        if (idx !== -1) {
+          alert(`Opção ${idx + 1}: preencha a política de reembolso / cancelamento.`)
+          return
+        }
+      } else {
+        const idx = validas.findIndex(o => !o.reembolso?.trim() || !o.remarcacao?.trim())
+        if (idx !== -1) {
+          alert(`Opção ${idx + 1}: preencha "Reembolso" e "Multa remarcação" — ambos obrigatórios.`)
+          return
+        }
+      }
     }
     setEnviando(true)
     const editando = demandaAtiva.status === 'aguardando_aprovacao'
@@ -898,17 +915,25 @@ export default function FilaOpcoes() {
                   </div>
                   </> )} {/* end descrição+preços */}
 
-                  {demandaAtiva.tipo !== 'posvenda' && (
+                  {demandaAtiva.tipo === 'hospedagem' && (
+                  <div className="mt-3">
+                    <label className="label">Política de reembolso / cancelamento *</label>
+                    <input className="input" placeholder="Ex: Reembolsável até 48h antes / Não reembolsável / Cobrança de 1 diária"
+                      value={op.reembolso} onChange={e => setOpcao(idx, 'reembolso', e.target.value)} required />
+                  </div>
+                  )}
+
+                  {demandaAtiva.tipo !== 'posvenda' && demandaAtiva.tipo !== 'hospedagem' && (
                   <div className="grid grid-cols-2 gap-3 mt-3">
                     <div>
-                      <label className="label">Reembolso <span className="font-normal" style={{ color: '#9CA3AF' }}>(opcional)</span></label>
-                      <input className="input" placeholder="Ex: Não reembolsável / R$ 50"
-                        value={op.reembolso} onChange={e => setOpcao(idx, 'reembolso', e.target.value)} />
+                      <label className="label">Reembolso *</label>
+                      <input className="input" placeholder="Ex: Não reembolsável / 70%"
+                        value={op.reembolso} onChange={e => setOpcao(idx, 'reembolso', e.target.value)} required />
                     </div>
                     <div>
-                      <label className="label">Remarcação <span className="font-normal" style={{ color: '#9CA3AF' }}>(opcional)</span></label>
-                      <input className="input" placeholder="Ex: Não remarcável / multa 20%"
-                        value={op.remarcacao} onChange={e => setOpcao(idx, 'remarcacao', e.target.value)} />
+                      <label className="label">Multa remarcação *</label>
+                      <input className="input" placeholder="Ex: Não remarcável / R$ 150 + dif. tarifa"
+                        value={op.remarcacao} onChange={e => setOpcao(idx, 'remarcacao', e.target.value)} required />
                     </div>
                   </div>
                   )}
