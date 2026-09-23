@@ -12,6 +12,7 @@ import FilaOpcoes from './pages/agente/FilaOpcoes'
 import NovaProposta from './pages/agente/NovaProposta'
 import Clientes from './pages/admin/Clientes'
 import Invoices from './pages/admin/Invoices'
+import GeradorInvoice from './pages/admin/GeradorInvoice'
 import Relatorio from './pages/aprovador/Relatorio'
 import Perfil from './pages/Perfil'
 import { Loader2 } from 'lucide-react'
@@ -42,6 +43,7 @@ function AppRoutes() {
         <Route path="nova-proposta" element={<NovaProposta />} />
         <Route path="clientes"     element={<Clientes />} />
         <Route path="invoices"     element={<Invoices />} />
+        <Route path="invoice-recibo" element={<GeradorInvoice />} />
         <Route path="relatorio"    element={<Relatorio />} />
         <Route path="perfil"       element={<Perfil />} />
         {/* <Route path="invoices"   element={<Invoices />} /> */}
