@@ -1,6 +1,6 @@
 // POST /api/enviar-voucher   Body: { demanda_id }
 // Envia o voucher de uma demanda emitida, como anexo, para os usuarios da
-// empresa marcados com perfis.recebe_vouchers = true.
+// empresa e da agencia marcados com perfis.recebe_vouchers = true.
 //
 // Envs no Vercel: SUPABASE_SERVICE_ROLE_KEY, (VITE_)SUPABASE_URL, RESEND_API_KEY,
 //                 EMAIL_FROM (opcional), APP_URL (opcional)
@@ -172,9 +172,11 @@ export default async function handler(req, res) {
     .from('bilhetes').select('voucher_url').eq('demanda_id', demanda_id).maybeSingle()
   if (!bilhete?.voucher_url) { res.status(400).json({ detail: 'Demanda sem voucher anexado' }); return }
 
+  // Destinatarios: pessoas da empresa cliente + da propria agencia (empresa_id nulo) marcadas.
   const { data: destinatarios, error: destErr } = await admin
     .from('perfis').select('id, nome')
-    .eq('empresa_id', demanda.empresa_id).eq('recebe_vouchers', true).eq('ativo', true)
+    .eq('recebe_vouchers', true).eq('ativo', true)
+    .or(`empresa_id.eq.${demanda.empresa_id},empresa_id.is.null`)
   if (destErr) { res.status(500).json({ detail: 'Falha ao buscar destinatarios: ' + destErr.message }); return }
   if (!destinatarios?.length) { res.status(200).json({ ok: true, enviados: [] }); return }
 
