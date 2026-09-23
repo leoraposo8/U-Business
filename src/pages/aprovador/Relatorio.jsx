@@ -222,7 +222,7 @@ export default function Relatorio() {
               <table className="w-full">
                 <thead>
                   <tr style={{ borderBottom: '1px solid #E5E7EB' }}>
-                    {['Passageiro', 'Tipo', 'Rota / Destino', 'Centro custo', 'Emitido em', 'Emissão', 'Valor'].map(h => (
+                    {['Passageiro', 'Tipo', 'Rota / Destino', 'Centro custo', 'Emitido em', 'Valor'].map(h => (
                       <th key={h} className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#6B7280' }}>{h}</th>
                     ))}
                   </tr>
@@ -248,15 +248,6 @@ export default function Relatorio() {
                       <td className="px-5 py-3 text-sm" style={{ color: '#6B7280' }}>
                         {fmtTs(b.emitido_em)}
                       </td>
-                      <td className="px-5 py-3">
-                        <span className="badge text-xs"
-                          style={{
-                            background: getTipoEmissao(b) === 'milha' ? '#F5F3FF' : '#FEF3C7',
-                            color: getTipoEmissao(b) === 'milha' ? '#5B2D8E' : '#E8820C',
-                          }}>
-                          {getTipoEmissao(b) === 'milha' ? '✦ Milha' : '🎫 Tarifado'}
-                        </span>
-                      </td>
                       <td className="px-5 py-3 text-sm font-semibold" style={{ color: '#C0186A' }}>
                         {moeda(getValor(b))}
                       </td>
@@ -265,7 +256,7 @@ export default function Relatorio() {
                 </tbody>
                 <tfoot>
                   <tr style={{ borderTop: '2px solid #E5E7EB', background: '#F8F9FA' }}>
-                    <td colSpan={6} className="px-5 py-3 text-sm font-semibold" style={{ color: '#1A1614' }}>
+                    <td colSpan={5} className="px-5 py-3 text-sm font-semibold" style={{ color: '#1A1614' }}>
                       Total ({filtrados.length} emissões)
                     </td>
                     <td className="px-5 py-3 font-bold text-base" style={{ color: '#C0186A' }}>

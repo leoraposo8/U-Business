@@ -7,7 +7,7 @@ import TipoBadge from '../../components/ui/TipoBadge'
 import {
   ChevronLeft, Luggage, Calendar, MapPin, User, Building2,
   Clock, CheckCircle, XCircle, Loader2, Upload, RotateCcw, Trash2,
-  Plane, Bus, Hotel, Pencil
+  Plane, Bus, Hotel, Pencil, Mail
 } from 'lucide-react'
 import { fmtTs, fmtData, fmtDataCurta, fmtDataHoraCompacta } from '../../lib/datetime'
 
@@ -17,6 +17,16 @@ function moeda(v) {
   if (!v && v !== 0) return '—'
   return Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
+
+// Comentario da aprovacao comeca com o tipo: "milha", "tarifado — Escalado para Nivel 2", etc.
+function parseTipoEmissao(comentario) {
+  const c = (comentario || '').toLowerCase()
+  if (c.startsWith('milha')) return 'milha'
+  if (c.startsWith('tarifado')) return 'tarifado'
+  return null
+}
+
+const LABEL_EMISSAO = { milha: '✦ Milha', tarifado: '🎫 Tarifado' }
 
 function InfoRow({ icon: Icon, label, value }) {
   if (!value) return null
@@ -200,10 +210,11 @@ function FormRevisao({ demanda, perfil, onEnviar, onCancelar }) {
   )
 }
 
-function OpcaoCard({ opcao, selecionada, endossada, aprovada, onSelecionar, podeSel }) {
-  // aprovada > selecionada > endossada (prioridade de exibicao)
-  const border = aprovada ? '#059669' : selecionada ? '#C0186A' : endossada ? '#F59E0B' : '#E5E7EB'
-  const bg     = aprovada ? '#ECFDF5' : selecionada ? '#fdf2f8' : endossada ? '#FFFBEB' : 'white'
+function OpcaoCard({ opcao, selecionada, endosso, aprovada, onSelecionar, podeSel }) {
+  // endosso = { por, tipo } quando esta opcao foi endossada pelo nivel anterior
+  // aprovada > selecionada > endossada (prioridade de cor da borda)
+  const border = aprovada ? '#059669' : selecionada ? '#C0186A' : endosso ? '#F59E0B' : '#E5E7EB'
+  const bg     = aprovada ? '#ECFDF5' : selecionada ? '#fdf2f8' : endosso ? '#FFFBEB' : 'white'
   return (
     <div className="rounded-xl border-2 p-4 transition-all cursor-pointer"
       style={{ borderColor: border, background: bg }}
@@ -213,7 +224,11 @@ function OpcaoCard({ opcao, selecionada, endossada, aprovada, onSelecionar, pode
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             {aprovada && <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: '#059669', color: 'white' }}>✓ Aprovada</span>}
             {!aprovada && selecionada && <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: '#C0186A', color: 'white' }}>✓ Selecionado</span>}
-            {!aprovada && !selecionada && endossada && <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: '#F59E0B', color: 'white' }}>Endossado pelo Nível anterior</span>}
+            {!aprovada && endosso && (
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: '#F59E0B', color: 'white' }}>
+                Endossado{endosso.por ? ` por ${endosso.por}` : ''}{endosso.tipo ? ` · ${LABEL_EMISSAO[endosso.tipo]}` : ''}
+              </span>
+            )}
             <p className="text-sm font-semibold" style={{ color: '#1A1614' }}>{opcao.companhia}</p>
           </div>
           {opcao.descricao && <p className="text-sm mb-1" style={{ color: '#6B7280' }}>{opcao.descricao}</p>}
@@ -283,6 +298,8 @@ export default function DetalheDemanda() {
   const [opcaoVoltaSelecionada, setOpcaoVoltaSelecionada] = useState(null)   // so quando modo complementar
   const [tipoEmissaoSel, setTipoEmissaoSel]     = useState(null)
   const [showConfirmAprovar, setShowConfirmAprovar] = useState(false)
+  const [obrasEmpresa, setObrasEmpresa] = useState([])
+  const [obraSel, setObraSel]           = useState('')
 
   // Reprovar
   const [showReprovar, setShowReprovar]   = useState(false)
@@ -295,6 +312,8 @@ export default function DetalheDemanda() {
   const [uploadando, setUploadando] = useState(false)
   const [uploadData, setUploadData] = useState('')
   const [uploadHora, setUploadHora] = useState('')
+  const [enviandoEmail, setEnviandoEmail] = useState(false)
+  const [emailVoucher, setEmailVoucher]   = useState(null) // { tipo: 'ok'|'info'|'erro', msg }
 
   // Excluir
   const [showExcluir, setShowExcluir] = useState(false)
@@ -314,7 +333,7 @@ export default function DetalheDemanda() {
       `).eq('id', id).single(),
       supabase.from('demanda_historico').select('*, usuario:perfis!usuario_id(nome)').eq('demanda_id', id).order('created_at'),
       supabase.from('opcoes').select('*').eq('demanda_id', id).order('created_at'),
-      supabase.from('aprovacoes').select('*, opcao:opcoes!opcao_id(*)').eq('demanda_id', id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+      supabase.from('aprovacoes').select('*, opcao:opcoes!opcao_id(*), aprovador:perfis!aprovador_id(nome)').eq('demanda_id', id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('bilhetes').select('*').eq('demanda_id', id).maybeSingle(),
     ])
     setDemanda(d); setHistorico(h ?? []); setOpcoes(o ?? [])
@@ -327,22 +346,42 @@ export default function DetalheDemanda() {
 
   useEffect(() => { carregar() }, [id])
 
-  // Quando a demanda ja tem uma aprovacao previa e o proximo aprovador esta
-  // abrindo (status ainda aguardando_aprovacao), pre-seleciona as opcoes
-  // e o tipo de emissao (do comentario da aprovacao anterior) pra ele ver
-  // o que foi endossado e habilitar o botao aprovar.
-  // Nao faz isso quando demanda ja aprovada/emitida — ai a marcacao vira
-  // "Aprovada" (verde) via prop separada.
+  // Endosso ativo = demanda ainda aguardando e a ultima decisao registrada foi
+  // um "aprovado" de nivel anterior (nao uma aprovacao final).
+  const endossoAtivo  = demanda?.status === 'aguardando_aprovacao' && aprovacao?.decisao === 'aprovado'
+  const tipoEndossado = endossoAtivo ? parseTipoEmissao(aprovacao.comentario) : null
+  const souNivel2     = perfil?.perfil === 'aprovador_2'
+
+  // Ao (re)selecionar exatamente a combinacao endossada, restaura o tipo de emissao endossado.
+  function tipoAoSelecionar(idaId, voltaId) {
+    if (!endossoAtivo) return null
+    if (idaId !== aprovacao.opcao_id) return null
+    if ((voltaId || null) !== (aprovacao.opcao_volta_id || null)) return null
+    return tipoEndossado
+  }
+
+  function endossoDe(opId, lado) {
+    if (!endossoAtivo) return null
+    const alvo = lado === 'volta' ? aprovacao.opcao_volta_id : aprovacao.opcao_id
+    return alvo === opId ? { por: aprovacao.aprovador?.nome, tipo: tipoEndossado } : null
+  }
+
   useEffect(() => {
-    if (demanda?.status !== 'aguardando_aprovacao') return
-    if (aprovacao?.opcao_id && !opcaoSelecionada) setOpcaoSelecionada(aprovacao.opcao_id)
-    if (aprovacao?.opcao_volta_id && !opcaoVoltaSelecionada) setOpcaoVoltaSelecionada(aprovacao.opcao_volta_id)
-    if (aprovacao?.comentario && !tipoEmissaoSel) {
-      const c = aprovacao.comentario.toLowerCase()
-      if (c.startsWith('milha')) setTipoEmissaoSel('milha')
-      else if (c.startsWith('tarifado')) setTipoEmissaoSel('tarifado')
-    }
-  }, [aprovacao?.opcao_id, aprovacao?.opcao_volta_id, aprovacao?.comentario, demanda?.status])
+    if (!endossoAtivo) return
+    if (aprovacao.opcao_id && !opcaoSelecionada) setOpcaoSelecionada(aprovacao.opcao_id)
+    if (aprovacao.opcao_volta_id && !opcaoVoltaSelecionada) setOpcaoVoltaSelecionada(aprovacao.opcao_volta_id)
+    if (tipoEndossado && !tipoEmissaoSel) setTipoEmissaoSel(tipoEndossado)
+  }, [aprovacao?.id, demanda?.status])
+
+  // Nivel 2 pode trocar o centro de custo no momento da aprovacao.
+  useEffect(() => {
+    if (!demanda) return
+    setObraSel(demanda.obra_id ?? '')
+    if (!souNivel2 || demanda.status !== 'aguardando_aprovacao') return
+    supabase.from('obras').select('id, nome')
+      .eq('empresa_id', demanda.empresa_id).eq('ativo', true).order('nome')
+      .then(({ data }) => setObrasEmpresa(data ?? []))
+  }, [demanda?.id, demanda?.obra_id, demanda?.status, souNivel2])
 
   async function aprovar() {
     if (!opcaoSelecionada || !tipoEmissaoSel) return
@@ -461,18 +500,27 @@ export default function DetalheDemanda() {
         aprovador_id: perfil.id, decisao: 'aprovado',
         comentario: motivoEscalacao ? `${tipoEmissaoSel} — ${motivoEscalacao}` : tipoEmissaoSel,
       })
-      await supabase.from('demandas').update({
+      const obraAlterada = souNivel2 && obraSel && obraSel !== demanda.obra_id
+      const notaObra = obraAlterada
+        ? `Centro de custo alterado: ${demanda.obras?.nome || '—'} → ${obrasEmpresa.find(o => o.id === obraSel)?.nome || '—'}`
+        : null
+
+      const { error: updErr } = await supabase.from('demandas').update({
         status: statusNovo, aprovador_id: novoAprovadorId,
         proximo_aprovador_nivel: novoNivel,
+        ...(obraAlterada ? { obra_id: obraSel } : {}),
       }).eq('id', id)
+      if (updErr) throw updErr
       await supabase.from('demanda_historico').insert({
         demanda_id: id, status_anterior: demanda.status,
         status_novo: statusNovo, usuario_id: perfil.id,
-        comentario: motivoEscalacao,
+        comentario: [motivoEscalacao, notaObra].filter(Boolean).join(' · ') || null,
       })
 
       setShowConfirmAprovar(false); setOpcaoSelecionada(null); setOpcaoVoltaSelecionada(null); setTipoEmissaoSel(null)
       await carregar()
+    } catch (err) {
+      alert('Erro ao aprovar: ' + err.message)
     } finally { setSalvando(false) }
   }
 
@@ -512,6 +560,25 @@ export default function DetalheDemanda() {
     await carregar()
   }
 
+  async function enviarVoucherPorEmail() {
+    setEnviandoEmail(true); setEmailVoucher(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/api/enviar-voucher', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ demanda_id: id }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.detail || `HTTP ${res.status}`)
+      setEmailVoucher(json.enviados?.length
+        ? { tipo: 'ok', msg: `Voucher enviado por e-mail para ${json.enviados.join(', ')}` }
+        : { tipo: 'info', msg: 'Nenhum destinatário de vouchers configurado para esta empresa.' })
+    } catch (err) {
+      setEmailVoucher({ tipo: 'erro', msg: `E-mail do voucher não enviado: ${err.message}` })
+    } finally { setEnviandoEmail(false) }
+  }
+
   async function uploadVoucher(file) {
     if (!file) return
     setUploadando(true)
@@ -526,8 +593,11 @@ export default function DetalheDemanda() {
       await supabase.from('demandas').update({ status: 'emitido' }).eq('id', id)
       await supabase.from('demanda_historico').insert({ demanda_id: id, status_anterior: 'aprovado', status_novo: 'emitido', usuario_id: perfil.id })
       await carregar()
-    } catch (err) { alert('Erro no upload: ' + err.message)
+    } catch (err) {
+      alert('Erro no upload: ' + err.message)
+      return
     } finally { setUploadando(false) }
+    await enviarVoucherPorEmail()
   }
 
   async function excluirDemanda() {
@@ -598,9 +668,15 @@ export default function DetalheDemanda() {
                 Volta: <strong>{opcoes.find(o => o.id === opcaoVoltaSelecionada)?.companhia}</strong>
               </p>
             )}
-            <p className="text-sm mb-5" style={{ color: '#6B7280' }}>
-              Emissão: <strong>{tipoEmissaoSel === 'milha' ? '✦ Milha' : '🎫 Tarifado'}</strong>
+            <p className={`text-sm ${souNivel2 && obraSel && obraSel !== demanda.obra_id ? 'mb-1' : 'mb-5'}`} style={{ color: '#6B7280' }}>
+              Emissão: <strong>{LABEL_EMISSAO[tipoEmissaoSel]}</strong>
             </p>
+            {souNivel2 && obraSel && obraSel !== demanda.obra_id && (
+              <p className="text-sm mb-5" style={{ color: '#6B7280' }}>
+                Centro de custo: <strong>{obrasEmpresa.find(o => o.id === obraSel)?.nome}</strong>
+                <span className="block text-xs" style={{ color: '#9CA3AF' }}>antes: {demanda.obras?.nome || '—'}</span>
+              </p>
+            )}
             <p className="text-xs p-3 rounded-lg mb-4" style={{ background: '#FEF3C7', color: '#92400E' }}>
               Após confirmar, a aprovação só poderá ser desfeita enquanto o bilhete não for emitido.
             </p>
@@ -723,10 +799,13 @@ export default function DetalheDemanda() {
                         {opcoesIda.map(op => (
                           <OpcaoCard key={op.id} opcao={op}
                             selecionada={opcaoSelecionada === op.id}
-                            endossada={aprovacao?.opcao_id === op.id}
+                            endosso={endossoDe(op.id, 'ida')}
                             aprovada={(demanda.status === 'aprovado' || demanda.status === 'emitido') && aprovacao?.opcao_id === op.id}
                             podeSel={podAprovar}
-                            onSelecionar={id => { setOpcaoSelecionada(id === opcaoSelecionada ? null : id); setTipoEmissaoSel(null) }} />
+                            onSelecionar={oid => {
+                              const nova = oid === opcaoSelecionada ? null : oid
+                              setOpcaoSelecionada(nova); setTipoEmissaoSel(tipoAoSelecionar(nova, opcaoVoltaSelecionada))
+                            }} />
                         ))}
                       </div>
                       <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#6B7280' }}>Escolha uma volta</p>
@@ -734,10 +813,13 @@ export default function DetalheDemanda() {
                         {opcoesVolta.map(op => (
                           <OpcaoCard key={op.id} opcao={op}
                             selecionada={opcaoVoltaSelecionada === op.id}
-                            endossada={aprovacao?.opcao_volta_id === op.id}
+                            endosso={endossoDe(op.id, 'volta')}
                             aprovada={(demanda.status === 'aprovado' || demanda.status === 'emitido') && aprovacao?.opcao_volta_id === op.id}
                             podeSel={podAprovar}
-                            onSelecionar={id => { setOpcaoVoltaSelecionada(id === opcaoVoltaSelecionada ? null : id); setTipoEmissaoSel(null) }} />
+                            onSelecionar={oid => {
+                              const nova = oid === opcaoVoltaSelecionada ? null : oid
+                              setOpcaoVoltaSelecionada(nova); setTipoEmissaoSel(tipoAoSelecionar(opcaoSelecionada, nova))
+                            }} />
                         ))}
                       </div>
                     </>
@@ -748,10 +830,13 @@ export default function DetalheDemanda() {
                     {opcoes.map(op => (
                       <OpcaoCard key={op.id} opcao={op}
                         selecionada={opcaoSelecionada === op.id}
-                        endossada={aprovacao?.opcao_id === op.id}
+                        endosso={endossoDe(op.id, 'ida')}
                         aprovada={(demanda.status === 'aprovado' || demanda.status === 'emitido') && aprovacao?.opcao_id === op.id}
                         podeSel={podAprovar}
-                        onSelecionar={id => { setOpcaoSelecionada(id === opcaoSelecionada ? null : id); setTipoEmissaoSel(null) }} />
+                        onSelecionar={oid => {
+                          const nova = oid === opcaoSelecionada ? null : oid
+                          setOpcaoSelecionada(nova); setTipoEmissaoSel(tipoAoSelecionar(nova, null))
+                        }} />
                     ))}
                   </div>
                 )
@@ -807,6 +892,23 @@ export default function DetalheDemanda() {
                             </button>
                           )}
                         </div>
+                        {souNivel2 && obrasEmpresa.length > 0 && (
+                          <div className="mb-3">
+                            <label className="label">Centro de custo</label>
+                            <select className="input" value={obraSel} onChange={e => setObraSel(e.target.value)}>
+                              {!demanda.obra_id && <option value="">—</option>}
+                              {demanda.obra_id && !obrasEmpresa.some(o => o.id === demanda.obra_id) && (
+                                <option value={demanda.obra_id}>{demanda.obras?.nome}</option>
+                              )}
+                              {obrasEmpresa.map(o => <option key={o.id} value={o.id}>{o.nome}</option>)}
+                            </select>
+                            {obraSel && obraSel !== demanda.obra_id && (
+                              <p className="text-xs mt-1" style={{ color: '#B45309' }}>
+                                Alterado — antes: {demanda.obras?.nome || '—'}
+                              </p>
+                            )}
+                          </div>
+                        )}
                         <button onClick={() => { setTipoEmissaoSel(tipoEfetivo); setShowConfirmAprovar(true) }}
                           disabled={!tipoEfetivo}
                           className="btn-primary disabled:opacity-40">
@@ -873,26 +975,29 @@ export default function DetalheDemanda() {
           )}
 
           {/* Resultado da aprovação */}
-          {aprovacao && (
-            <div className="card p-4" style={{
-              borderColor: aprovacao.decisao === 'aprovado' ? '#A7F3D0' : '#FECACA',
-              background: aprovacao.decisao === 'aprovado' ? '#ECFDF5' : '#FEF2F2',
-            }}>
-              <div className="flex items-center gap-2 text-sm font-medium">
-                {aprovacao.decisao === 'aprovado'
-                  ? <CheckCircle size={16} style={{ color: '#059669' }} />
-                  : <XCircle size={16} style={{ color: '#DC2626' }} />}
-                <span style={{ color: aprovacao.decisao === 'aprovado' ? '#059669' : '#DC2626' }}>
+          {aprovacao && aprovacao.decisao !== 'desaprovado' && (() => {
+            const tipo = parseTipoEmissao(aprovacao.comentario)
+            const cor = endossoAtivo ? { borda: '#FDE68A', fundo: '#FFFBEB', texto: '#B45309' }
+                      : aprovacao.decisao === 'aprovado' ? { borda: '#A7F3D0', fundo: '#ECFDF5', texto: '#059669' }
+                      : { borda: '#FECACA', fundo: '#FEF2F2', texto: '#DC2626' }
+            const titulo = endossoAtivo
+              ? `Endossado${aprovacao.aprovador?.nome ? ` por ${aprovacao.aprovador.nome}` : ''}${tipo ? ` · ${LABEL_EMISSAO[tipo]}` : ''} — aguardando próximo nível`
+              : aprovacao.decisao === 'aprovado' ? `Aprovado${tipo ? ` · ${LABEL_EMISSAO[tipo]}` : ''}`
+              : 'Reprovado'
+            return (
+              <div className="card p-4" style={{ borderColor: cor.borda, background: cor.fundo }}>
+                <div className="flex items-center gap-2 text-sm font-medium">
                   {aprovacao.decisao === 'aprovado'
-                    ? `Aprovado · ${aprovacao.comentario === 'milha' ? '✦ Milha' : '🎫 Tarifado'}`
-                    : 'Reprovado'}
-                </span>
+                    ? <CheckCircle size={16} style={{ color: cor.texto }} />
+                    : <XCircle size={16} style={{ color: cor.texto }} />}
+                  <span style={{ color: cor.texto }}>{titulo}</span>
+                </div>
+                {aprovacao.comentario && aprovacao.decisao === 'rejeitado' && (
+                  <p className="text-sm mt-1" style={{ color: '#6B7280' }}>{aprovacao.comentario}</p>
+                )}
               </div>
-              {aprovacao.comentario && aprovacao.decisao !== 'aprovado' && (
-                <p className="text-sm mt-1" style={{ color: '#6B7280' }}>{aprovacao.comentario}</p>
-              )}
-            </div>
-          )}
+            )
+          })()}
 
           {/* Upload voucher */}
           {isAgencia && demanda.status === 'aprovado' && (
@@ -903,7 +1008,7 @@ export default function DetalheDemanda() {
                 </div>
                 <div className="flex-1">
                   <p className="text-sm font-semibold mb-1" style={{ color: '#065F46' }}>
-                    Aprovado · {aprovacao?.comentario === 'milha' ? '✦ Milha' : '🎫 Tarifado'} — faça o upload do voucher
+                    Aprovado · {LABEL_EMISSAO[parseTipoEmissao(aprovacao?.comentario)] ?? '—'} — faça o upload do voucher
                   </p>
                   <p className="text-xs mb-2" style={{ color: '#059669' }}>Data/hora de emissão:</p>
                   <div className="flex gap-2 mb-3">
@@ -936,6 +1041,20 @@ export default function DetalheDemanda() {
                   className="text-xs mt-1 hover:underline block" style={{ color: '#C0186A' }}>
                   Ver voucher →
                 </a>
+              )}
+              {emailVoucher && (
+                <p className="text-xs mt-2" style={{
+                  color: emailVoucher.tipo === 'ok' ? '#059669' : emailVoucher.tipo === 'erro' ? '#DC2626' : '#6B7280',
+                }}>
+                  {emailVoucher.msg}
+                </p>
+              )}
+              {isAgencia && bilhete.voucher_url && (
+                <button onClick={enviarVoucherPorEmail} disabled={enviandoEmail}
+                  className="text-xs mt-2 flex items-center gap-1 hover:underline disabled:opacity-50" style={{ color: '#6B7280' }}>
+                  {enviandoEmail ? <Loader2 size={12} className="animate-spin" /> : <Mail size={12} />}
+                  {enviandoEmail ? 'Enviando e-mail...' : 'Reenviar voucher por e-mail'}
+                </button>
               )}
             </div>
           )}
